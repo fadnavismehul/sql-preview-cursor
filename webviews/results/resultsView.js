@@ -20,7 +20,9 @@ if (typeof Tabulator === 'undefined') {
     const errorContainer = document.getElementById('error-container');
     const loadingIndicator = document.getElementById('loading-indicator');
     const statusMessageElement = document.getElementById('status-message');
-    const rowCountElement = document.getElementById('row-count');
+    const rowCountInfoElement = document.getElementById('row-count-info');
+    const truncationWarningElement = document.getElementById('truncation-warning');
+    const exportButton = document.getElementById('export-button');
 
     // --- Tabulator Instance --- 
     let table = null; // Will be initialized when data arrives
@@ -30,7 +32,7 @@ if (typeof Tabulator === 'undefined') {
     let currentColumns = [];
 
     // --- Initialize Table Function ---
-    function initializeTable(columns, data) {
+    function initializeTable(columns, data, wasTruncated, totalRowsInFirstBatch) {
         if (!tableElement) return; // Should not happen
 
         // Clear previous table if exists
@@ -68,30 +70,51 @@ if (typeof Tabulator === 'undefined') {
         // Create Tabulator instance
         table = new Tabulator(tableElement, {
             data: tabulatorData,
-            columns: tabulatorColumns,
-            layout: "fitDataTable", // Adjust layout as needed fitData | fitColumns | fitDataTable
-            placeholder: "No results", // Message when data is empty
+            // Add Row Number column
+            columns: [
+                {formatter:"rownum", hozAlign:"center", width:40, headerSort:false, frozen:true},
+                ...tabulatorColumns // Spread the actual data columns after rownum
+            ],
+            layout: "fitDataFill", // Try different layout modes for density
+            placeholder: "No results", 
             pagination: "local", // Enable local pagination
             paginationSize: 50, // Number of rows per page
             paginationSizeSelector: [50, 100, 250, 500, true], // Allow user to change page size
-            movableColumns: true, // Allow column reordering
-            resizableRows: true,    // Allow row height resizing 
-            resizableColumns: true, // Allow column width resizing
-            height: "calc(100vh - 80px)", // Example: Adjust height dynamically (consider controls height)
-            // Add other Tabulator options as needed: grouping, sorting, etc.
-            initialSort: [], // No initial sort by default
-            clipboard: true, // Enable copying to clipboard
-            clipboardCopyRowRange: "selected", // Copy selected rows
+            movableColumns: true, 
+            resizableRows: false,    // Disable row resizing for more consistency
+            resizableColumns: true, 
+            height: "100%", // Let Tabulator use the container height (managed by CSS flexbox)
+            initialSort: [], 
+            clipboard: true, 
+            clipboardCopyRowRange: "selected", 
+            // Optional: Add virtual DOM for potentially better performance with many rows/columns
+            // virtualDom: true, 
+            // virtualDomBuffer: 300, // Adjust buffer size
         });
         
         // Update row count display
-        updateRowCount(data.length);
+        updateRowCount(data.length, totalRowsInFirstBatch, wasTruncated);
+
+        // Show/hide export button based on whether full results might be available
+        if (exportButton) {
+             exportButton.style.display = (totalRowsInFirstBatch > 0) ? 'inline-block' : 'none'; // Show if first batch had rows
+             // TODO: Add event listener for export button click
+             // exportButton.onclick = () => { vscode.postMessage({ command: 'exportCsv' }); };
+        }
     }
 
     // --- Helper Functions ---
-    function updateRowCount(count) {
-        if (rowCountElement) {
-            rowCountElement.textContent = `(${count} row${count !== 1 ? 's' : ''})`;
+    function updateRowCount(displayedCount, totalInBatch, wasTruncated) {
+        if (rowCountInfoElement) {
+            let text = `(${displayedCount} row${displayedCount !== 1 ? 's' : ''} shown`;
+            if (wasTruncated) {
+                 text += ` of ${totalInBatch} in first batch`;
+            }
+            text += ')';
+            rowCountInfoElement.textContent = text;
+        }
+        if (truncationWarningElement) {
+             truncationWarningElement.style.display = wasTruncated ? 'inline' : 'none';
         }
     }
     
@@ -123,9 +146,11 @@ if (typeof Tabulator === 'undefined') {
                  statusMessageElement.textContent = 'Finished'; // Default status unless overridden
              }
         }
-        if (message.type !== 'showLoading' && rowCountElement) {
+        if (message.type !== 'showLoading' && rowCountInfoElement) {
              if (message.type !== 'resultData') {
-                  rowCountElement.textContent = ''; // Clear count unless results are coming
+                  rowCountInfoElement.textContent = ''; // Clear count unless results are coming
+                  if (truncationWarningElement) truncationWarningElement.style.display = 'none';
+                  if (exportButton) exportButton.style.display = 'none';
              }
         }
 
@@ -135,14 +160,20 @@ if (typeof Tabulator === 'undefined') {
                 if (table) table.clearData(); // Clear existing table data
                 if (loadingIndicator) loadingIndicator.style.display = 'flex';
                 if (statusMessageElement) statusMessageElement.textContent = 'Executing query...';
-                if (rowCountElement) rowCountElement.textContent = '';
+                if (rowCountInfoElement) rowCountInfoElement.textContent = '';
                 if (errorContainer) errorContainer.style.display = 'none';
                 break;
 
             case 'resultData':
-                console.log(`Received resultData: ${message.data?.rows?.length} rows`);
+                console.log(`Received resultData: ${message.data?.rows?.length} rows shown`);
+                console.log(`Truncated: ${message.data.wasTruncated}, Total in batch: ${message.data.totalRowsInFirstBatch}, Next URI: ${!!message.data.nextUri}`);
                 try {
-                    initializeTable(message.data.columns, message.data.rows);
+                    initializeTable(
+                        message.data.columns, 
+                        message.data.rows, 
+                        message.data.wasTruncated, 
+                        message.data.totalRowsInFirstBatch
+                    );
                     if (statusMessageElement) statusMessageElement.textContent = 'Finished';
                     if (errorContainer) errorContainer.style.display = 'none';
                 } catch (e) {
@@ -160,20 +191,24 @@ if (typeof Tabulator === 'undefined') {
                 if (table) table.clearData();
                 if (errorContainer) {
                     errorContainer.textContent = `Query Error: ${message.error.message}`;
-                    if (message.error.details) { // Add details if available
-                         errorContainer.textContent += `\n\nDetails:\n${message.error.details}`;
+                    if (message.error.details) { // Avoid overly long details in the main view, log to console instead
+                         console.error("Error Details:", message.error.details);
                     }
                     errorContainer.style.display = 'block';
                 }
                 if (statusMessageElement) statusMessageElement.textContent = 'Error';
-                if (rowCountElement) rowCountElement.textContent = '';
+                if (rowCountInfoElement) rowCountInfoElement.textContent = '';
+                if (truncationWarningElement) truncationWarningElement.style.display = 'none';
+                if (exportButton) exportButton.style.display = 'none';
                 break;
                 
             case 'statusMessage':
                 console.log("Received statusMessage:", message.message);
                  if (table) table.clearData();
                  if (statusMessageElement) statusMessageElement.textContent = message.message;
-                 if (rowCountElement) rowCountElement.textContent = ''; // No rows for status messages
+                 if (rowCountInfoElement) rowCountInfoElement.textContent = '';
+                 if (truncationWarningElement) truncationWarningElement.style.display = 'none';
+                 if (exportButton) exportButton.style.display = 'none';
                  if (errorContainer) errorContainer.style.display = 'none';
                 break;
         }

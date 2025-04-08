@@ -3,8 +3,30 @@ import * as vscode from 'vscode';
 import { Trino, BasicAuth } from 'trino-client'; 
 import { PrestoCodeLensProvider } from './PrestoCodeLensProvider'; // Corrected filename casing
 import { ResultsViewProvider } from './resultsViewProvider';
+import axios from 'axios'; // Import axios
+import https from 'https'; // Import https for custom agent
 
 let resultsViewProvider: ResultsViewProvider | undefined;
+
+// --- Module-level state for last query results --- 
+// Store the full first batch and pagination info for potential export
+interface LastQueryResult {
+    columns: { name: string; type: string }[];
+    rows: any[][];
+    query: string;
+    nextUri?: string; // URI for the next page, if any
+    infoUri?: string; // Info URI for the query
+    id?: string;      // Query ID
+}
+let lastSuccessfulQueryResult: LastQueryResult | null = null;
+// --- End state --- 
+
+// Create a reusable HTTPS agent for axios requests (important for custom SSL verification)
+const createHttpsAgent = (sslVerify: boolean) => {
+    return new https.Agent({
+        rejectUnauthorized: sslVerify
+    });
+};
 
 /**
  * This method is called when your extension is activated.
@@ -52,124 +74,166 @@ export function activate(context: vscode.ExtensionContext) {
         const password = config.get<string>('password') || undefined;
         const ssl = config.get<boolean>('ssl', false);
         const sslVerify = config.get<boolean>('sslVerify', true);
+        const maxRows = config.get<number>('maxRowsToDisplay', 500);
 
-        // Define options structure inline, don't use ClientOptions type
-        const clientOptions: any = { // Use 'any' or define an inline interface if preferred
+        // --- Setup Authentication --- 
+        let basicAuthHeader: string | undefined;
+        if (password) {
+            basicAuthHeader = 'Basic ' + Buffer.from(`${user}:${password}`).toString('base64');
+        }
+        // TODO: Handle other auth methods if needed
+
+        // --- Setup Client Options (excluding auth for create) --- 
+        const clientOptions: any = {
             server: `${ssl ? 'https' : 'http'}://${host}:${port}`,
             user: user,
             catalog: catalog,
             schema: schema,
             ssl: ssl ? { rejectUnauthorized: sslVerify } : undefined,
-            // basic_auth will be set below if password exists
+            // Pass custom agent ONLY if using SSL and custom verification needed
+            // httpsAgent: ssl ? createHttpsAgent(sslVerify) : undefined 
+             // NOTE: trino-client might not support custom httpsAgent directly in options.
+             // We will handle SSL verification in direct axios calls.
         };
-
-        // Add basic authentication if password is provided
+        // Add auth separately if supported by create method in this version
         if (password) {
-            // According to trino-client docs, auth goes here, not basic_auth key
-            clientOptions.auth = new BasicAuth(user, password); 
+             clientOptions.auth = new BasicAuth(user, password);
         }
 
-        // Instantiate using the static Trino.create factory method
-        const client = Trino.create(clientOptions); 
+        const client = Trino.create(clientOptions);
 
         try {
             console.log(`Executing query: ${sql.substring(0, 100)}...`);
 
-            // --- Data variables ---
             let results: any[][] = [];
             let columns: { name: string; type: string }[] | null = null;
+            let rawResultObject: any = null;
+            let nextUriFromResponse: string | undefined = undefined;
+            let infoUriFromResponse: string | undefined = undefined;
+            let queryIdFromResponse: string | undefined = undefined;
+            let wasTruncated = false;
+            let totalRowsFetched = 0;
+            let currentPageUri: string | undefined = undefined; // Declare higher scope
 
-            // --- ATTEMPT 1: Try client.execute() first (Speculative) ---
-            let executeSucceeded = false;
-            // Use type assertion to check for the method without compiler errors
-            if (typeof (client as any).execute === 'function') { 
-                console.log("Attempting client.execute()...");
-                try {
-                    // Assuming execute might return a single object with results
-                    // Adjust the expected return type based on potential library structure
-                    const queryResultData: { columns?: any[], data?: any[][] } | any = await (client as any).execute(sql);
-                    console.log("client.execute() raw result:", JSON.stringify(queryResultData, null, 2));
+            // --- Execute Query and Fetch Pages --- 
+            console.log("Attempting to fetch first page...");
+            const queryIter = await client.query(sql);
+            const firstIteration = await queryIter.next();
+            rawResultObject = firstIteration.value;
+            const firstDone = firstIteration.done;
+            console.log(`First iteration result: done = ${firstDone}`);
 
-                    // Check if the result looks valid (has columns and data arrays)
-                    if (queryResultData && Array.isArray(queryResultData.columns) && Array.isArray(queryResultData.data)) {
-                        console.log("Processing results from client.execute().");
-                        columns = queryResultData.columns.map((col: { name: string; type: string }) => ({ 
-                            name: col.name, 
-                            type: col.type 
-                        }));
-                        results = queryResultData.data;
-                        executeSucceeded = true; // Mark success
-                    } else {
-                        console.warn("client.execute() result format unexpected or missing columns/data.");
-                    }
-                } catch (execError: any) {
-                    console.warn("client.execute() failed:", execError.message, ". Falling back to client.query().");
+            if (rawResultObject) {
+                console.log("Raw FIRST queryResult value received."); // No need to log full object now
+                if (rawResultObject.columns && Array.isArray(rawResultObject.columns)) {
+                    columns = rawResultObject.columns.map((col: { name: string; type: string }) => ({ 
+                        name: col.name, 
+                        type: col.type 
+                    }));
                 }
-            } else {
-                console.log("client.execute() method not found.");
+                if (rawResultObject.data && Array.isArray(rawResultObject.data)) {
+                    results.push(...rawResultObject.data);
+                    totalRowsFetched += rawResultObject.data.length;
+                }
+                nextUriFromResponse = rawResultObject.nextUri;
+                infoUriFromResponse = rawResultObject.infoUri;
+                queryIdFromResponse = rawResultObject.id;
             }
 
-            // --- FALLBACK or if execute failed: Use client.query() --- 
-            if (!executeSucceeded) {
-                console.log("Falling back to client.query() iterator...");
-                const queryIter = await client.query(sql);
+            // --- Fetch subsequent pages if needed --- 
+            currentPageUri = nextUriFromResponse; // Initialize before loop
+            if (columns && columns.length > 0) { 
+                let pageCount = 1;
+                const httpsAgent = createHttpsAgent(sslVerify); 
                 
-                console.log("(Fallback) Attempting to get FIRST result from iterator...");
-                
-                // --- Get the first result from the iterator --- 
-                const firstIteration = await queryIter.next();
-                const firstQueryResult = firstIteration.value;
-                const firstDone = firstIteration.done;
-                
-                console.log(`(Fallback) First iteration result: done = ${firstDone}`);
-                
-                if (firstQueryResult) {
-                    console.log("(Fallback) Raw FIRST queryResult value:", JSON.stringify(firstQueryResult, null, 2));
+                while (currentPageUri && totalRowsFetched < maxRows) {
+                    pageCount++;
+                    console.log(`Fetching page ${pageCount} (total rows so far: ${totalRowsFetched})... URI: ${currentPageUri}`);
                     
-                    // --- Process data/columns from the FIRST result --- 
-                    if (firstQueryResult.columns && Array.isArray(firstQueryResult.columns)) {
-                        console.log("(Fallback) Detected columns in FIRST result.");
-                        columns = firstQueryResult.columns.map((col: { name: string; type: string }) => ({ 
-                            name: col.name, 
-                            type: col.type 
-                        }));
+                    try {
+                        const response = await axios.get(currentPageUri, {
+                            httpsAgent: httpsAgent,
+                            headers: basicAuthHeader ? { 'Authorization': basicAuthHeader } : undefined,
+                        });
+                        
+                        // Use type assertion for response data
+                        const pageData: any = response.data; 
+                        if (pageData?.data && Array.isArray(pageData.data)) {
+                            results.push(...pageData.data);
+                            totalRowsFetched += pageData.data.length;
+                            console.log(`Fetched ${pageData.data.length} rows from page ${pageCount}. New total: ${totalRowsFetched}`);
+                        }
+                        currentPageUri = pageData?.nextUri; 
+                        if (!currentPageUri) {
+                             console.log("No nextUri found in page", pageCount, "response. Pagination complete.");
+                        }
+                        
+                    } catch (pageError: any) {
+                         console.error(`Error fetching page ${pageCount} from ${currentPageUri}:`, pageError.message);
+                         vscode.window.showWarningMessage(`Failed to fetch all results page ${pageCount}: ${pageError.message}`);
+                         currentPageUri = undefined; // Stop pagination on error
                     }
-                    if (firstQueryResult.data && Array.isArray(firstQueryResult.data)) {
-                        console.log(`(Fallback) Detected ${firstQueryResult.data.length} data rows in FIRST result.`);
-                        results.push(...firstQueryResult.data);
-                    }
-                    // --- End processing first result --- 
-                    
-                    // We could potentially check firstQueryResult.nextUri here if needed later
-                    // but for now, we assume the first result is all we get from this iterator.
-                    
-                } else {
-                     console.log("(Fallback) First iteration had no value.");
                 }
                 
-                // Check if the iterator immediately reported done, even if there was a value
-                if(firstDone) {
-                    console.log("(Fallback) Iterator reported DONE on first call.");
+                // Check if truncated after pagination attempt
+                if (currentPageUri || totalRowsFetched > maxRows) {
+                     wasTruncated = true;
+                     console.log("Results potentially truncated after pagination.");
                 }
-                
-                console.log("(Fallback) Finished attempting to get first result.");
-                 // --- No further looping needed as the iterator seems broken --- 
             }
-            // --- End Fallback ---
-            
-            console.log(`Query finished processing. Columns: ${columns?.length ?? 0}, Rows: ${results.length}`);
 
-            // --- Send results (or status) to view provider --- 
+            console.log(`Query finished processing. Total rows fetched: ${totalRowsFetched}. Columns: ${columns?.length ?? 0}`);
+
+            // --- Store result state and limit rows for display --- 
+            lastSuccessfulQueryResult = null; 
+            let displayRows = [...results]; // Use potentially paginated results
+            let finalTotalRows = totalRowsFetched;
+
+            // Store the potentially paginated results (up to maxRows or full set)
             if (columns && columns.length > 0) {
-                 resultsViewProvider.showResults({
+                 lastSuccessfulQueryResult = {
                     columns: columns,
-                    rows: results,
-                    query: sql 
+                    // Store ALL fetched rows for potential export, even if > maxRows
+                    rows: results, 
+                    query: sql,
+                    // nextUri here indicates if there was potentially MORE after we stopped fetching
+                    nextUri: nextUriFromResponse, 
+                    infoUri: infoUriFromResponse,
+                    id: queryIdFromResponse
+                };
+                
+                // Slice for display if needed
+                if (results.length > maxRows) {
+                    console.log(`Limiting display rows from ${totalRowsFetched} to ${maxRows}`);
+                    displayRows = results.slice(0, maxRows); 
+                    wasTruncated = true;
+                }
+
+                // Update truncation flag if pagination stopped due to hitting maxRows
+                if (!currentPageUri && totalRowsFetched >= maxRows) {
+                    // We might have fetched exactly maxRows but there could have been more
+                    // Or we fetched > maxRows and sliced. Either way, consider truncated.
+                    // Exception: If the very last page happened to bring us exactly to maxRows and had no nextUri.
+                    // It's safer to assume truncation if we hit the limit.
+                    wasTruncated = true;
+                }
+                
+                // Send display results to view provider
+                 resultsViewProvider.showResults({
+                    columns: columns, 
+                    rows: displayRows, // Display rows (maxRows limit)
+                    query: sql, 
+                    wasTruncated: wasTruncated, 
+                    totalRowsInFirstBatch: -1, // This concept is less relevant now
+                    totalRowsFetched: totalRowsFetched, // Pass actual fetched count
+                    queryId: queryIdFromResponse,
+                    infoUri: infoUriFromResponse,
+                    nextUri: currentPageUri // Pass the *final* nextUri (null if finished)
                 });
             } else {
-                // If columns is still null or empty after trying both methods
-                console.warn("Could not determine columns or no columns returned after trying execute/query.");
-                resultsViewProvider.showStatusMessage('Query finished successfully (no tabular data).');
+                 // No columns found...
+                 console.warn("Could not determine columns or no columns returned...");
+                 resultsViewProvider.showStatusMessage('Query finished successfully (no tabular data).');
             }
             
         } catch (error: any) {

@@ -1,1 +1,243 @@
- 
+/* Enhanced styling for the results webview - Aiming for cleaner look */
+
+/* Base body inherits VS Code styles */
+body {
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+    color: var(--vscode-editor-foreground);
+    background-color: var(--vscode-editor-background);
+    padding: 0; /* Remove body padding, let elements manage their own */
+    margin: 0;
+    overflow: hidden; /* Prevent body scrollbars, let Tabulator handle scrolling */
+    display: flex;
+    flex-direction: column;
+    height: 100vh; /* Full viewport height */
+}
+
+/* Controls area styling */
+.controls {
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--vscode-editorWidget-border, var(--vscode-contrastBorder, transparent));
+    font-size: calc(var(--vscode-font-size) * 0.9);
+    color: var(--vscode-descriptionForeground);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0; /* Prevent shrinking */
+    gap: 15px; /* Add gap between left/right sections */
+}
+
+.controls > div { /* Target direct children divs for flex alignment */
+    display: flex;
+    align-items: center;
+    gap: 8px; /* Spacing within left/right sections */
+}
+
+#status-message {
+    font-weight: 600;
+    color: var(--vscode-editor-foreground); /* Make status slightly more prominent */
+}
+
+#row-count-info {
+    /* Inherits color from .controls */
+}
+
+#truncation-warning {
+    font-style: italic;
+}
+
+#export-button {
+    /* Use VS Code button variables */
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: 1px solid var(--vscode-button-border, transparent);
+    padding: 2px 8px;
+    font-size: calc(var(--vscode-font-size) * 0.9);
+    border-radius: 2px;
+    cursor: pointer;
+    flex-shrink: 0; /* Prevent button shrinking */
+}
+
+#export-button:hover {
+    background-color: var(--vscode-button-hoverBackground);
+}
+
+/* Loading Indicator Styles */
+.loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    font-size: var(--vscode-font-size);
+    color: var(--vscode-descriptionForeground);
+    flex-grow: 1; /* Take remaining space if loading */
+}
+
+.spinner {
+    border: 3px solid var(--vscode-editorWidget-background, #252526);
+    border-top: 3px solid var(--vscode-button-background, #0e639c);
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    animation: spin 1s linear infinite;
+    margin-right: 8px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Error Message Styles */
+.error-message {
+    color: var(--vscode-errorForeground);
+    background-color: var(--vscode-inputValidation-errorBackground, rgba(255, 0, 0, 0.1));
+    border: 1px solid var(--vscode-inputValidation-errorBorder, red);
+    padding: 10px 12px;
+    margin: 10px; /* Add margin when visible */
+    border-radius: 3px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    flex-shrink: 0; /* Don't shrink error messages */
+}
+
+/* --- Tabulator Styling Overrides --- */
+
+/* Container for the table */
+#results-table {
+    width: 100%;
+    flex-grow: 1; /* Allow table to take remaining vertical space */
+    overflow: hidden; /* Tabulator adds its own scrollbars */
+    /* Remove default borders/backgrounds, inherit from body */
+    border: none;
+    background-color: transparent;
+}
+
+/* Main Tabulator element */
+.tabulator {
+    border: none; /* Remove main Tabulator border */
+    background-color: transparent; /* Inherit background */
+    color: var(--vscode-editor-foreground);
+    font-size: var(--vscode-font-size);
+    /* Ensure full height within its container */
+    height: 100%; 
+}
+
+/* Header Styling */
+.tabulator .tabulator-header {
+    background-color: var(--vscode-editorWidget-background, #252526); /* Slightly different background for header */
+    border-top: none;
+    border-left: none;
+    border-right: none;
+    border-bottom: 1px solid var(--vscode-editorWidget-border, var(--vscode-contrastBorder, #454545));
+    color: var(--vscode-editor-foreground);
+    font-weight: 600; /* Make headers bolder */
+}
+
+.tabulator .tabulator-header .tabulator-col {
+    background-color: transparent; /* Inherit header background */
+    border-right: 1px solid var(--vscode-editorWidget-border, var(--vscode-contrastBorder, #454545));
+    padding: 6px 8px; /* Adjust header padding */
+}
+.tabulator .tabulator-header .tabulator-col:last-of-type {
+     border-right: none; /* No border on the last column */
+}
+
+/* Header Filter Inputs */
+.tabulator .tabulator-header .tabulator-col .tabulator-header-filter input {
+    background-color: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border);
+    padding: 3px 5px;
+    border-radius: 2px;
+    font-size: calc(var(--vscode-font-size) * 0.95);
+    width: calc(100% - 10px); /* Adjust width */
+    margin-top: 4px; /* Space from header text */
+}
+
+/* Sorting indicators */
+.tabulator .tabulator-header .tabulator-col.tabulator-sortable[aria-sort="ascending"] .tabulator-arrow {
+    border-bottom: 5px solid var(--vscode-editor-foreground);
+}
+.tabulator .tabulator-header .tabulator-col.tabulator-sortable[aria-sort="descending"] .tabulator-arrow {
+    border-top: 5px solid var(--vscode-editor-foreground);
+}
+
+/* Table Body Holder */
+.tabulator .tabulator-tableHolder {
+    background-color: transparent; /* Inherit body background */
+    border: none;
+}
+
+/* Row Styling */
+.tabulator .tabulator-tableHolder .tabulator-row {
+    background-color: transparent;
+    border: none; /* Remove default row borders */
+    color: var(--vscode-editor-foreground);
+}
+
+/* Subtle background for alternate rows */
+.tabulator .tabulator-tableHolder .tabulator-row.tabulator-row-odd {
+     background-color: var(--vscode-editorWidget-background, #2c2c2c); 
+}
+
+/* Hover effect for rows */
+.tabulator .tabulator-tableHolder .tabulator-row:hover {
+    background-color: var(--vscode-list-hoverBackground, #2a2d2e);
+}
+
+/* Cell Styling */
+.tabulator .tabulator-tableHolder .tabulator-row .tabulator-cell {
+    border-right: 1px solid var(--vscode-editorGroup-border, #333); /* Subtle cell divider */
+    padding: 5px 8px; /* Adjust cell padding */
+    white-space: nowrap; /* Prevent wrapping by default */
+    overflow: hidden;
+    text-overflow: ellipsis; /* Show ellipsis for overflow */
+}
+.tabulator .tabulator-tableHolder .tabulator-row .tabulator-cell:last-of-type {
+     border-right: none; /* No border on the last cell */
+}
+
+/* Footer / Pagination Styling */
+.tabulator .tabulator-footer {
+    background-color: var(--vscode-editorWidget-background, #252526);
+    border-top: 1px solid var(--vscode-editorWidget-border, var(--vscode-contrastBorder, #454545));
+    border-bottom: none;
+    border-left: none;
+    border-right: none;
+    color: var(--vscode-descriptionForeground);
+    padding: 5px 10px;
+    font-size: calc(var(--vscode-font-size) * 0.9);
+}
+
+.tabulator .tabulator-footer .tabulator-paginator label {
+    color: var(--vscode-descriptionForeground);
+}
+
+.tabulator .tabulator-footer .tabulator-page {
+     background-color: var(--vscode-input-background);
+     border: 1px solid var(--vscode-input-border);
+     color: var(--vscode-input-foreground);
+     border-radius: 2px;
+     margin: 0 2px;
+     padding: 2px 6px;
+}
+.tabulator .tabulator-footer .tabulator-page.active {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border-color: var(--vscode-button-background);
+}
+.tabulator .tabulator-footer .tabulator-page:disabled {
+     opacity: 0.5;
+     cursor: not-allowed;
+}
+
+/* Style the page size selector */
+.tabulator .tabulator-footer select {
+     background-color: var(--vscode-input-background);
+     border: 1px solid var(--vscode-input-border);
+     color: var(--vscode-input-foreground);
+     border-radius: 2px;
+     padding: 1px 4px;
+     margin-left: 5px;
+} 

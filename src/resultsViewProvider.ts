@@ -63,7 +63,16 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
     }
 
     /** Sends query results to the webview */
-    public showResults(data: { columns: any[], rows: any[][], query: string }) {
+    public showResults(data: {
+        columns: any[], 
+        rows: any[][], 
+        query: string,
+        wasTruncated: boolean,
+        totalRowsInFirstBatch: number,
+        queryId?: string,
+        infoUri?: string,
+        nextUri?: string
+    }) {
         if (this._view) {
             this._view.show?.(true); 
             this._view.webview.postMessage({ type: 'resultData', data: data });
@@ -141,11 +150,18 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
             </head>
             <body>
                 <div class="controls">
-                    <span id="status-message">Ready</span>
-                    <span id="row-count"></span>
+                    <div>
+                        <span id="status-message">Ready</span>
+                        <span id="row-count-info"></span>
+                        <span id="truncation-warning" style="display: none; color: var(--vscode-descriptionForeground); margin-left: 10px;">(Results limited)</span>
+                    </div>
+                    <div>
+                        <!-- Placeholder for Export Button -->
+                        <button id="export-button" style="display: none;" title="Export full results to CSV">Export CSV</button> 
+                    </div>
                 </div>
 
-                <div id="error-container" class="error-message"></div>
+                <div id="error-container" class="error-message" style="display: none;"></div>
 
                 <div id="loading-indicator" class="loading" style="display: none;">
                      <div class="spinner"></div> 
