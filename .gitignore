@@ -1,0 +1,11 @@
+.vscode-test
+out
+node_modules
+*.vsix
+.DS_Store
+*.log
+
+# Tabulator CSS (if downloaded locally)
+webviews/css/tabulator_vscode.min.css
+# Tabulator JS (if downloaded locally)
+webviews/js/tabulator.min.js 
