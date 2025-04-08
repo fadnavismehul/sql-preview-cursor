@@ -9,7 +9,9 @@ export class PrestoCodeLensProvider implements vscode.CodeLensProvider {
     // private _onDidChangeCodeLenses: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
     // readonly onDidChangeCodeLenses: vscode.Event<void> = this._onDidChangeCodeLenses.event;
 
-    constructor() { }
+    constructor() {
+        // Default constructor - no initialization needed
+    }
 
     /**
      * Computes and returns the CodeLenses for a given text document.

@@ -4,7 +4,7 @@ import { Trino, BasicAuth } from 'trino-client';
 import { PrestoCodeLensProvider } from './PrestoCodeLensProvider'; // Corrected filename casing
 import { ResultsViewProvider } from './resultsViewProvider';
 import axios from 'axios'; // Import axios
-import https from 'https'; // Import https for custom agent
+import * as https from 'https'; // Import https for custom agent
 
 let resultsViewProvider: ResultsViewProvider | undefined;
 
@@ -105,7 +105,7 @@ export function activate(context: vscode.ExtensionContext) {
         try {
             console.log(`Executing query: ${sql.substring(0, 100)}...`);
 
-            let results: any[][] = [];
+            const results: any[][] = [];
             let columns: { name: string; type: string }[] | null = null;
             let rawResultObject: any = null;
             let nextUriFromResponse: string | undefined = undefined;
@@ -151,27 +151,29 @@ export function activate(context: vscode.ExtensionContext) {
                     console.log(`Fetching page ${pageCount} (total rows so far: ${totalRowsFetched})... URI: ${currentPageUri}`);
                     
                     try {
-                        const response = await axios.get(currentPageUri, {
-                            httpsAgent: httpsAgent,
+                        // Cast the config to any to bypass type checking for Node.js specific options
+                        const config: any = {
                             headers: basicAuthHeader ? { 'Authorization': basicAuthHeader } : undefined,
-                        });
+                        };
+                        if (httpsAgent) {
+                            config.httpsAgent = httpsAgent;
+                        }
+                        const response = await axios.get(currentPageUri, config);
                         
-                        // Use type assertion for response data
-                        const pageData: any = response.data; 
+                        const pageData: any = response.data;
                         if (pageData?.data && Array.isArray(pageData.data)) {
                             results.push(...pageData.data);
                             totalRowsFetched += pageData.data.length;
                             console.log(`Fetched ${pageData.data.length} rows from page ${pageCount}. New total: ${totalRowsFetched}`);
                         }
-                        currentPageUri = pageData?.nextUri; 
+                        currentPageUri = pageData?.nextUri;
                         if (!currentPageUri) {
-                             console.log("No nextUri found in page", pageCount, "response. Pagination complete.");
+                            console.log("No nextUri found in page", pageCount, "response. Pagination complete.");
                         }
-                        
                     } catch (pageError: any) {
-                         console.error(`Error fetching page ${pageCount} from ${currentPageUri}:`, pageError.message);
-                         vscode.window.showWarningMessage(`Failed to fetch all results page ${pageCount}: ${pageError.message}`);
-                         currentPageUri = undefined; // Stop pagination on error
+                        console.error(`Error fetching page ${pageCount} from ${currentPageUri}:`, pageError.message);
+                        vscode.window.showWarningMessage(`Failed to fetch all results page ${pageCount}: ${pageError.message}`);
+                        currentPageUri = undefined; // Stop pagination on error
                     }
                 }
                 
@@ -187,7 +189,7 @@ export function activate(context: vscode.ExtensionContext) {
             // --- Store result state and limit rows for display --- 
             lastSuccessfulQueryResult = null; 
             let displayRows = [...results]; // Use potentially paginated results
-            let finalTotalRows = totalRowsFetched;
+            const finalTotalRows = totalRowsFetched;
 
             // Store the potentially paginated results (up to maxRows or full set)
             if (columns && columns.length > 0) {
@@ -220,15 +222,14 @@ export function activate(context: vscode.ExtensionContext) {
                 
                 // Send display results to view provider
                  resultsViewProvider.showResults({
-                    columns: columns, 
-                    rows: displayRows, // Display rows (maxRows limit)
-                    query: sql, 
-                    wasTruncated: wasTruncated, 
-                    totalRowsInFirstBatch: -1, // This concept is less relevant now
-                    totalRowsFetched: totalRowsFetched, // Pass actual fetched count
+                    columns,
+                    rows: results.slice(0, maxRows),
+                    query: sql,
+                    wasTruncated: results.length > maxRows || !!currentPageUri,
+                    totalRowsInFirstBatch: results.length,
                     queryId: queryIdFromResponse,
                     infoUri: infoUriFromResponse,
-                    nextUri: currentPageUri // Pass the *final* nextUri (null if finished)
+                    nextUri: currentPageUri
                 });
             } else {
                  // No columns found...
