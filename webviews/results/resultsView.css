@@ -8,7 +8,7 @@ body {
     background-color: var(--vscode-editor-background);
     padding: 0; /* Remove body padding, let elements manage their own */
     margin: 0;
-    overflow: hidden; /* Prevent body scrollbars, let Tabulator handle scrolling */
+    overflow: hidden; /* Prevent body scrollbars, let AG Grid handle scrolling */
     display: flex;
     flex-direction: column;
     height: 100vh; /* Full viewport height */
@@ -35,7 +35,7 @@ body {
 
 #status-message {
     font-weight: 600;
-    color: var(--vscode-editor-foreground); /* Make status slightly more prominent */
+    color: var(--vscode-editor-foreground); 
 }
 
 #row-count-info {
@@ -47,7 +47,6 @@ body {
 }
 
 #export-button {
-    /* Use VS Code button variables */
     background-color: var(--vscode-button-background);
     color: var(--vscode-button-foreground);
     border: 1px solid var(--vscode-button-border, transparent);
@@ -55,7 +54,7 @@ body {
     font-size: calc(var(--vscode-font-size) * 0.9);
     border-radius: 2px;
     cursor: pointer;
-    flex-shrink: 0; /* Prevent button shrinking */
+    flex-shrink: 0; 
 }
 
 #export-button:hover {
@@ -70,7 +69,7 @@ body {
     padding: 20px;
     font-size: var(--vscode-font-size);
     color: var(--vscode-descriptionForeground);
-    flex-grow: 1; /* Take remaining space if loading */
+    flex-grow: 1; 
 }
 
 .spinner {
@@ -94,150 +93,170 @@ body {
     background-color: var(--vscode-inputValidation-errorBackground, rgba(255, 0, 0, 0.1));
     border: 1px solid var(--vscode-inputValidation-errorBorder, red);
     padding: 10px 12px;
-    margin: 10px; /* Add margin when visible */
+    margin: 10px; 
     border-radius: 3px;
     white-space: pre-wrap;
     word-wrap: break-word;
-    flex-shrink: 0; /* Don't shrink error messages */
+    flex-shrink: 0; 
 }
 
-/* --- Tabulator Styling Overrides --- */
+/* --- AG Grid Styling --- */
 
-/* Container for the table */
-#results-table {
+/* Container for the grid */
+#results-grid {
     width: 100%;
-    flex-grow: 1; /* Allow table to take remaining vertical space */
-    overflow: hidden; /* Tabulator adds its own scrollbars */
-    /* Remove default borders/backgrounds, inherit from body */
-    border: none;
-    background-color: transparent;
+    flex-grow: 1; /* Allow grid to take remaining vertical space */
+    /* height: 100%; AG Grid domLayout: 'normal' manages height with its own container */
 }
 
-/* Main Tabulator element */
-.tabulator {
-    border: none; /* Remove main Tabulator border */
-    background-color: transparent; /* Inherit background */
-    color: var(--vscode-editor-foreground);
-    font-size: var(--vscode-font-size);
-    /* Ensure full height within its container */
-    height: 100%; 
+/* AG Grid Theme Overrides - Targeting .ag-theme-quartz specifically */
+.ag-theme-quartz {
+    /* Core variables */
+    --ag-background-color: var(--vscode-editor-background);
+    --ag-foreground-color: var(--vscode-editor-foreground);
+    --ag-border-color: var(--vscode-editorWidget-border, #454545);
+    --ag-secondary-border-color: var(--vscode-tree-indentGuidesStroke, #585858); /* for cell borders */
+    --ag-row-border-color: var(--vscode-editorWidget-border, #454545);
+    --ag-font-family: var(--vscode-font-family);
+    --ag-font-size: var(--vscode-font-size);
+
+    /* Header */
+    --ag-header-background-color: var(--vscode-editorWidget-background, #252526);
+    --ag-header-foreground-color: var(--vscode-editor-foreground);
+    --ag-header-height: 30px; /* Adjust as needed */
+    --ag-header-cell-hover-background-color: var(--vscode-list-hoverBackground, #2a2d2e);
+    --ag-header-cell-moving-background-color: var(--vscode-list-activeSelectionBackground, #094771);
+
+    /* Rows */
+    --ag-row-background-color: var(--vscode-editor-background);
+    --ag-odd-row-background-color: var(--vscode-editorGutter-background, var(--vscode-editorWidget-background, #2c2c2c)); /* Subtle difference for odd rows */
+    --ag-row-hover-color: var(--vscode-list-hoverBackground, #2a2d2e);
+    --ag-row-selected-background-color: var(--vscode-list-activeSelectionBackground, #094771);
+    --ag-row-selected-foreground-color: var(--vscode-list-activeSelectionForeground, #ffffff);
+    --ag-row-height: 28px; /* Adjust for density */
+
+    /* Cells */
+    --ag-cell-horizontal-border: 1px solid var(--ag-secondary-border-color);
+    --ag-cell-data-changed-color: var(--vscode-editorGutter-modifiedBackground, yellow); /* For flashing cells */
+    
+    /* Inputs (like filters) */
+    --ag-input-background-color: var(--vscode-input-background);
+    --ag-input-foreground-color: var(--vscode-input-foreground);
+    --ag-input-border-color: var(--vscode-input-border);
+    --ag-input-disabled-background-color: var(--vscode-input-disabledBackground, var(--vscode-input-background));
+    --ag-input-disabled-foreground-color: var(--vscode-input-disabledForeground, var(--vscode-input-foreground));
+
+    /* Pagination */
+    --ag-pagination-background-color: var(--vscode-editorWidget-background, #252526);
+    --ag-pagination-foreground-color: var(--vscode-descriptionForeground);
+    --ag-pagination-button-background-color: var(--vscode-button-background);
+    --ag-pagination-button-foreground-color: var(--vscode-button-foreground);
+    --ag-pagination-button-hover-background-color: var(--vscode-button-hoverBackground);
+    --ag-pagination-disabled-button-foreground-color: var(--vscode-disabledForeground);
+    --ag-pagination-height: 30px;
+
+    /* Tooltips */
+    --ag-tooltip-background-color: var(--vscode-editor-hoverHighlightBackground);
+    --ag-tooltip-foreground-color: var(--vscode-editor-foreground);
+
+    /* Scrollbars (AG Grid uses its own, these might need ::-webkit-scrollbar if not applying) */
+    --ag-scrollbar-width: 10px;
+    --ag-scrollbar-thumb-color: var(--vscode-scrollbarSlider-background);
+    --ag-scrollbar-thumb-hover-color: var(--vscode-scrollbarSlider-hoverBackground);
+    --ag-scrollbar-thumb-active-color: var(--vscode-scrollbarSlider-activeBackground);
+    --ag-scrollbar-track-color: transparent; /* Match editor background */
+
+    /* Status Bar (if using AG Grid Enterprise status bar) */
+    /* --ag-status-bar-background-color: var(--vscode-statusBar-background); */
+    /* --ag-status-bar-foreground-color: var(--vscode-statusBar-foreground); */
+
+    /* Icons - AG Grid uses SVG icons. Their color can be controlled via fill */
+    --ag-icon-color: var(--vscode-icon-foreground);
+    --ag-icon-disabled-color: var(--vscode-disabledForeground);
+
+    /* Range Selection */
+    --ag-range-selection-border-color: var(--vscode-editor-selectionBackground);
+    --ag-range-selection-background-color: var(--vscode-editor-selectionBackground);
+    --ag-range-selection-background-color-2: var(--vscode-editor-selectionBackground);
+    --ag-range-selection-background-color-3: var(--vscode-editor-selectionBackground);
+    --ag-range-selection-background-color-4: var(--vscode-editor-selectionBackground);
+     --ag-range-selection-highlight-color: var(--vscode-peekViewResult-selectionBackground);
+
+
 }
 
-/* Header Styling */
-.tabulator .tabulator-header {
-    background-color: var(--vscode-editorWidget-background, #252526); /* Slightly different background for header */
-    border-top: none;
-    border-left: none;
-    border-right: none;
-    border-bottom: 1px solid var(--vscode-editorWidget-border, var(--vscode-contrastBorder, #454545));
-    color: var(--vscode-editor-foreground);
-    font-weight: 600; /* Make headers bolder */
+/* Specific overrides if AG Grid CSS variables are not enough */
+.ag-theme-quartz .ag-header {
+    border-bottom: 1px solid var(--ag-border-color);
 }
 
-.tabulator .tabulator-header .tabulator-col {
-    background-color: transparent; /* Inherit header background */
-    border-right: 1px solid var(--vscode-editorWidget-border, var(--vscode-contrastBorder, #454545));
-    padding: 6px 8px; /* Adjust header padding */
-}
-.tabulator .tabulator-header .tabulator-col:last-of-type {
-     border-right: none; /* No border on the last column */
+.ag-theme-quartz .ag-header-cell {
+    padding: 0 8px; /* Adjust header cell padding */
 }
 
-/* Header Filter Inputs */
-.tabulator .tabulator-header .tabulator-col .tabulator-header-filter input {
+.ag-theme-quartz .ag-cell {
+    padding: 0 8px; /* Adjust data cell padding */
+    line-height: var(--ag-row-height); /* Vertically center content in cells */
+}
+
+/* Right align numeric cells (if AG Grid numericColumn type doesn't do it or for custom logic) */
+.ag-theme-quartz .ag-cell.ag-right-aligned-cell {
+    text-align: right;
+}
+.ag-theme-quartz .ag-numeric-cell { /* For type: 'numericColumn' */
+    text-align: right;
+}
+
+
+/* Floating filter input styling */
+.ag-theme-quartz .ag-floating-filter-input input {
     background-color: var(--vscode-input-background);
     color: var(--vscode-input-foreground);
     border: 1px solid var(--vscode-input-border);
-    padding: 3px 5px;
     border-radius: 2px;
-    font-size: calc(var(--vscode-font-size) * 0.95);
-    width: calc(100% - 10px); /* Adjust width */
-    margin-top: 4px; /* Space from header text */
-}
-
-/* Sorting indicators */
-.tabulator .tabulator-header .tabulator-col.tabulator-sortable[aria-sort="ascending"] .tabulator-arrow {
-    border-bottom: 5px solid var(--vscode-editor-foreground);
-}
-.tabulator .tabulator-header .tabulator-col.tabulator-sortable[aria-sort="descending"] .tabulator-arrow {
-    border-top: 5px solid var(--vscode-editor-foreground);
-}
-
-/* Table Body Holder */
-.tabulator .tabulator-tableHolder {
-    background-color: transparent; /* Inherit body background */
-    border: none;
-}
-
-/* Row Styling */
-.tabulator .tabulator-tableHolder .tabulator-row {
-    background-color: transparent;
-    border: none; /* Remove default row borders */
-    color: var(--vscode-editor-foreground);
-}
-
-/* Subtle background for alternate rows */
-.tabulator .tabulator-tableHolder .tabulator-row.tabulator-row-odd {
-     background-color: var(--vscode-editorWidget-background, #2c2c2c); 
-}
-
-/* Hover effect for rows */
-.tabulator .tabulator-tableHolder .tabulator-row:hover {
-    background-color: var(--vscode-list-hoverBackground, #2a2d2e);
-}
-
-/* Cell Styling */
-.tabulator .tabulator-tableHolder .tabulator-row .tabulator-cell {
-    border-right: 1px solid var(--vscode-editorGroup-border, #333); /* Subtle cell divider */
-    padding: 5px 8px; /* Adjust cell padding */
-    white-space: nowrap; /* Prevent wrapping by default */
-    overflow: hidden;
-    text-overflow: ellipsis; /* Show ellipsis for overflow */
-}
-.tabulator .tabulator-tableHolder .tabulator-row .tabulator-cell:last-of-type {
-     border-right: none; /* No border on the last cell */
-}
-
-/* Footer / Pagination Styling */
-.tabulator .tabulator-footer {
-    background-color: var(--vscode-editorWidget-background, #252526);
-    border-top: 1px solid var(--vscode-editorWidget-border, var(--vscode-contrastBorder, #454545));
-    border-bottom: none;
-    border-left: none;
-    border-right: none;
-    color: var(--vscode-descriptionForeground);
-    padding: 5px 10px;
+    padding: 2px 4px;
     font-size: calc(var(--vscode-font-size) * 0.9);
+    height: calc(var(--ag-header-height) - 12px); /* Adjust based on header height & padding */
+    margin-top: 2px; /* Small adjustment */
 }
 
-.tabulator .tabulator-footer .tabulator-paginator label {
-    color: var(--vscode-descriptionForeground);
+/* Style the row number column (#) specially if needed */
+.ag-theme-quartz .ag-pinned-left-cols-container .ag-cell[col-id="0"] { /* Assuming row number is first after pinning */
+    background-color: var(--vscode-editorGutter-background, var(--vscode-editorWidget-background));
+    color: var(--vscode-editorLineNumber-foreground);
+    font-weight: bold;
+}
+/* Or if using valueGetter: 'node.rowIndex + 1' and it gets an auto colId like 'ag-Grid-AutoColumn-row_index' */
+/* You might need to inspect the generated colId for the row number column */
+
+/* Ensure VSCode theme variables take precedence for specific cases if needed */
+body.vscode-light .ag-theme-quartz {
+    --ag-odd-row-background-color: #f5f5f5; /* Lighter odd row for light themes */
 }
 
-.tabulator .tabulator-footer .tabulator-page {
-     background-color: var(--vscode-input-background);
-     border: 1px solid var(--vscode-input-border);
-     color: var(--vscode-input-foreground);
-     border-radius: 2px;
-     margin: 0 2px;
-     padding: 2px 6px;
-}
-.tabulator .tabulator-footer .tabulator-page.active {
-    background-color: var(--vscode-button-background);
-    color: var(--vscode-button-foreground);
-    border-color: var(--vscode-button-background);
-}
-.tabulator .tabulator-footer .tabulator-page:disabled {
-     opacity: 0.5;
-     cursor: not-allowed;
+body.vscode-dark .ag-theme-quartz {
+    --ag-odd-row-background-color: var(--vscode-editorWidget-background, #2c2c2c);
 }
 
-/* Style the page size selector */
-.tabulator .tabulator-footer select {
-     background-color: var(--vscode-input-background);
-     border: 1px solid var(--vscode-input-border);
-     color: var(--vscode-input-foreground);
-     border-radius: 2px;
-     padding: 1px 4px;
-     margin-left: 5px;
+body.vscode-high-contrast .ag-theme-quartz {
+    --ag-odd-row-background-color: var(--vscode-editor-background); /* No odd/even difference */
+    --ag-border-color: var(--vscode-contrastBorder);
+    --ag-secondary-border-color: var(--vscode-contrastBorder);
+    --ag-header-background-color: var(--vscode-editor-background);
+    --ag-header-border-color: var(--vscode-contrastBorder);
+    --ag-row-border-color: var(--vscode-contrastBorder);
+}
+
+body.vscode-high-contrast .ag-theme-quartz .ag-cell {
+    border-right: 1px solid var(--vscode-contrastBorder);
+    border-bottom: 1px solid var(--vscode-contrastBorder);
+}
+body.vscode-high-contrast .ag-theme-quartz .ag-header-cell {
+    border-right: 1px solid var(--vscode-contrastBorder);
+}
+
+/* Ensure the grid takes up the available space if its container is flex growing */
+#results-grid.ag-theme-quartz {
+    height: 100%;
+    width: 100%;
 } 

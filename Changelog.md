@@ -24,6 +24,7 @@
   - Live theme updates when user changes VS Code theme
 
 ### Changed
+- Replaced Tabulator with AG Grid for the results view, providing enhanced features and a more modern grid experience.
 - Updated results display to use Tabulator for better data visualization
 - Improved results panel styling to better match VS Code themes
 - Enhanced query result handling with pagination support

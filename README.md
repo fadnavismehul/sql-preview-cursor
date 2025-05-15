@@ -18,7 +18,7 @@ A Visual Studio Code extension for connecting to Presto/Trino databases, running
 - **TypeScript**: Primary development language
 - **Trino Client**: Node.js client for Presto/Trino database connections
 - **Axios**: HTTP client for handling paginated query results
-- **Tabulator**: Interactive data grid for displaying query results
+- **AG Grid**: Interactive data grid for displaying query results
 - **ESLint**: Code quality and style enforcement
 
 ## Configuration

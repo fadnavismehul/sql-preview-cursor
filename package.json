@@ -134,6 +134,7 @@
     "typescript": "^5.1.3"
   },
   "dependencies": {
+    "ag-grid-community": "^31.3.2",
     "axios": "^1.8.4",
     "trino-client": "^0.2.6"
   }

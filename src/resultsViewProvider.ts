@@ -113,16 +113,10 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
         // URI for the main CSS file for the webview
         const stylesUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'webviews', 'results', 'resultsView.css'));
         
-        // --- Tabulator URIs (Consider using a CDN or bundling for simplicity) ---
-        // Option 1: Use CDN (Simpler setup, requires internet)
-        const tabulatorScriptUri = "https://unpkg.com/tabulator-tables@5.5.2/dist/js/tabulator.min.js";
-        const tabulatorStylesUri = "https://unpkg.com/tabulator-tables@5.5.2/dist/css/tabulator_modern.min.css"; // Choose a theme
-
-        // Option 2: Use Local Files (Requires downloading Tabulator JS/CSS into webviews/vendor or similar)
-        // const tabulatorScriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'webviews', 'vendor', 'tabulator.min.js'));
-        // const tabulatorStylesUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'webviews', 'vendor', 'tabulator_modern.min.css'));
-        // --- End Tabulator URIs ---
-
+        // --- AG Grid URIs (using unpkg CDN) ---
+        const agGridScriptUri = "https://unpkg.com/ag-grid-community@31.3.2/dist/ag-grid-community.min.js";
+        const agGridStylesUri = "https://unpkg.com/ag-grid-community@31.3.2/styles/ag-grid.css";
+        const agGridThemeStylesUri = "https://unpkg.com/ag-grid-community@31.3.2/styles/ag-theme-quartz.css"; // Using Quartz theme
 
         return `<!DOCTYPE html>
             <html lang="en">
@@ -141,8 +135,9 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
                 
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 
-                <!-- Load Tabulator CSS -->
-                <link href="${tabulatorStylesUri}" rel="stylesheet">
+                <!-- Load AG Grid CSS -->
+                <link href="${agGridStylesUri}" rel="stylesheet">
+                <link href="${agGridThemeStylesUri}" rel="stylesheet">
                 <!-- Load local CSS -->
                 <link href="${stylesUri}" rel="stylesheet">
                 
@@ -168,10 +163,11 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
                      <span>Loading...</span>
                 </div>
 
-                <div id="results-table"></div>
+                <!-- AG Grid Container: Ensure it has a theme class -->
+                <div id="results-grid" class="ag-theme-quartz"></div>
 
-                <!-- Load Tabulator JS -->
-                <script nonce="${nonce}" src="${tabulatorScriptUri}"></script>
+                <!-- Load AG Grid JS -->
+                <script nonce="${nonce}" src="${agGridScriptUri}"></script>
                 <!-- Load local JS -->
                 <script nonce="${nonce}" src="${scriptUri}"></script>
             </body>

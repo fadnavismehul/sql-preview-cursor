@@ -1,22 +1,20 @@
 // Make sure Tabulator library is loaded before this script runs (usually via HTML <script> tag)
 
-// Check if Tabulator is loaded
-if (typeof Tabulator === 'undefined') {
-    console.error("Tabulator library not found. Make sure it is included in the HTML.");
-    // Display error in the webview itself
+// Check if agGrid is loaded
+if (typeof agGrid === 'undefined') {
+    console.error("AG Grid library not found. Make sure it is included in the HTML.");
     const errorDiv = document.getElementById('error-container');
     if (errorDiv) {
-        errorDiv.textContent = "Critical Error: Tabulator library failed to load. Results cannot be displayed.";
+        errorDiv.textContent = "Critical Error: AG Grid library failed to load. Results cannot be displayed.";
         errorDiv.style.display = 'block';
     }
 } else {
-
     // Get the VS Code API handle
     // eslint-disable-next-line no-undef
     const vscode = acquireVsCodeApi();
 
     // --- DOM Elements --- 
-    const tableElement = document.getElementById('results-table');
+    const gridElement = document.getElementById('results-grid'); // Changed from tableElement
     const errorContainer = document.getElementById('error-container');
     const loadingIndicator = document.getElementById('loading-indicator');
     const statusMessageElement = document.getElementById('status-message');
@@ -24,82 +22,129 @@ if (typeof Tabulator === 'undefined') {
     const truncationWarningElement = document.getElementById('truncation-warning');
     const exportButton = document.getElementById('export-button');
 
-    // --- Tabulator Instance --- 
-    let table = null; // Will be initialized when data arrives
+    // --- AG Grid Instance & Options --- 
+    let gridOptions = null; // Will hold grid options
+    let currentGridApi = null; // Will be the gridApi from AG Grid
 
     // --- State --- 
-    let currentData = [];
-    let currentColumns = [];
+    // currentData and currentColumns might not be needed in the same way, AG Grid manages its own state.
 
-    // --- Initialize Table Function ---
-    function initializeTable(columns, data, wasTruncated, totalRowsInFirstBatch) {
-        if (!tableElement) return; // Should not happen
-
-        // Clear previous table if exists
-        if (table) {
-            try {
-                table.destroy();
-            } catch(e) { console.warn("Error destroying previous table:", e); }
-            table = null;
+    // --- Initialize Grid Function ---
+    function initializeGrid(columns, data, wasTruncated, totalRowsInFirstBatch) {
+        if (!gridElement) {
+            console.error("Grid element #results-grid not found!");
+            return;
         }
-        
-        // Transform columns for Tabulator
-        const tabulatorColumns = columns.map(col => ({
-            title: col.name,
+
+        // Clear previous grid if exists
+        if (currentGridApi) {
+            try {
+                currentGridApi.destroy();
+            } catch(e) { console.warn("Error destroying previous grid:", e); }
+            currentGridApi = null;
+        }
+        // Ensure the grid div is empty before creating a new grid
+        gridElement.innerHTML = '';
+
+        // Transform columns for AG Grid
+        const agGridColumnDefs = columns.map(col => ({
+            headerName: col.name,
             field: col.name,
-            headerFilter: "input", // Enable header filtering
-            // Add formatter based on col.type if needed (e.g., for numbers, dates)
-            // formatter: getFormatter(col.type),
-            hozAlign: isNumericType(col.type) ? "right" : "left", // Align numbers right
-            headerTooltip: `${col.name} (${col.type})` // Show type in tooltip
+            sortable: true,
+            filter: true, // Basic filter, can be 'agTextColumnFilter', true, etc.
+            resizable: true,
+            floatingFilter: true, // Similar to headerFilter: 'input'
+            headerTooltip: `${col.name} (${col.type})`, // Show type in tooltip
+            // Example for numeric alignment - this requires `type` on the colDef.
+            // One way to handle type-specifics:
+            // cellClass: isNumericType(col.type) ? 'ag-right-aligned-cell' : 'ag-left-aligned-cell',
+            // Or AG Grid has built-in types:
+            type: isNumericType(col.type) ? 'numericColumn' : undefined,
+            // For value formatting (e.g. numbers, dates) - can be added later
+            // valueFormatter: params => formatValue(params.value, col.type)
         }));
 
-        // Transform data for Tabulator (array of objects)
-        const tabulatorData = data.map(row => {
+        // Add Row Number column (pinned to the left)
+        const rowNumColDef = {
+            headerName: '#',
+            valueGetter: 'node.rowIndex + 1',
+            width: 60, 
+            pinned: 'left',
+            resizable: false,
+            sortable: false,
+            filter: false,
+            headerCheckboxSelection: false, // Optional: for row selection
+            checkboxSelection: false      // Optional: for row selection
+        };
+
+        // Transform data for AG Grid (array of objects)
+        const agGridRowData = data.map(row => {
             let obj = {};
             columns.forEach((col, i) => {
-                // Handle potential null/undefined values explicitly if necessary
                 obj[col.name] = row[i]; 
             });
             return obj;
         });
-        
-        currentData = tabulatorData;
-        currentColumns = tabulatorColumns;
 
-        // Create Tabulator instance
-        table = new Tabulator(tableElement, {
-            data: tabulatorData,
-            // Add Row Number column
-            columns: [
-                {formatter:"rownum", hozAlign:"center", width:40, headerSort:false, frozen:true},
-                ...tabulatorColumns // Spread the actual data columns after rownum
-            ],
-            layout: "fitDataFill", // Try different layout modes for density
-            placeholder: "No results", 
-            pagination: "local", // Enable local pagination
-            paginationSize: 50, // Number of rows per page
-            paginationSizeSelector: [50, 100, 250, 500, true], // Allow user to change page size
-            movableColumns: true, 
-            resizableRows: false,    // Disable row resizing for more consistency
-            resizableColumns: true, 
-            height: "100%", // Let Tabulator use the container height (managed by CSS flexbox)
-            initialSort: [], 
-            clipboard: true, 
-            clipboardCopyRowRange: "selected", 
-            // Optional: Add virtual DOM for potentially better performance with many rows/columns
-            // virtualDom: true, 
-            // virtualDomBuffer: 300, // Adjust buffer size
-        });
+        gridOptions = {
+            columnDefs: [rowNumColDef, ...agGridColumnDefs],
+            rowData: agGridRowData,
+            pagination: true,
+            paginationPageSize: 50,
+            paginationPageSizeSelector: [50, 100, 250, 500, 0], // 0 for 'all'
+            domLayout: 'normal', // 'autoHeight' or 'normal' or 'print'
+            // `height` is set on the div, AG Grid will fill it.
+            // For column sizing to fill width:
+            autoSizeStrategy: {
+                type: 'fitGridWidth',
+                defaultMinWidth: 100,
+            },
+            // Or make columns flexible
+            // defaultColDef: {
+            //     flex: 1,
+            //     minWidth: 100, // ensure columns are not too small
+            //     resizable: true,
+            //     sortable: true,
+            //     filter: true,
+            // },
+            animateRows: true,
+            enableCellTextSelection: true, // Allows text selection for copying
+            ensureDomOrder: true, // Important for text selection
+            // For clipboard - AG Grid Community has basic copy, Enterprise has more features
+            // suppressClipboardPaste: true, // if you don't want paste
+
+            // No rows overlay
+            overlayNoRowsTemplate: '<span style="padding: 10px; border: 1px solid grey; background: lightgrey;">No results to display</span>',
+            // Loading overlay (can be customized)
+            overlayLoadingTemplate: '<span class="ag-overlay-loading-center">Please wait while your rows are loading</span>',
+
+            onGridReady: (params) => {
+                currentGridApi = params.api;
+                 // Example: auto-size columns to fit content after data loads
+                // params.api.autoSizeAllColumns();
+            },
+        };
+
+        // Create AG Grid instance
+        // Ensure the grid div is in the DOM and visible before creating the grid
+        if (gridElement) {
+            new agGrid.Grid(gridElement, gridOptions);
+        } else {
+            console.error("AG Grid target element not found when creating grid.");
+        }
         
-        // Update row count display
         updateRowCount(data.length, totalRowsInFirstBatch, wasTruncated);
 
-        // Show/hide export button based on whether full results might be available
         if (exportButton) {
-             exportButton.style.display = (totalRowsInFirstBatch > 0) ? 'inline-block' : 'none'; // Show if first batch had rows
-             // TODO: Add event listener for export button click
-             // exportButton.onclick = () => { vscode.postMessage({ command: 'exportCsv' }); };
+             exportButton.style.display = (totalRowsInFirstBatch > 0) ? 'inline-block' : 'none';
+             // TODO: AG Grid export to CSV: currentGridApi.exportDataAsCsv();
+             exportButton.onclick = () => {
+                if (currentGridApi) {
+                    currentGridApi.exportDataAsCsv();
+                } else {
+                    vscode.postMessage({ command: 'alert', text: 'Grid not available for export.' });
+                }
+            };
         }
     }
 
@@ -108,7 +153,7 @@ if (typeof Tabulator === 'undefined') {
         if (rowCountInfoElement) {
             let text = `(${displayedCount} row${displayedCount !== 1 ? 's' : ''} shown`;
             if (wasTruncated) {
-                 text += ` of ${totalInBatch} in first batch`;
+                 text += ` of ${totalInBatch} (first batch)`;
             }
             text += ')';
             rowCountInfoElement.textContent = text;
@@ -131,24 +176,22 @@ if (typeof Tabulator === 'undefined') {
 
     // --- Message Handling --- 
     window.addEventListener('message', event => {
-        const message = event.data; // The JSON data sent from the extension
+        const message = event.data; 
 
-        // Hide loading indicator as soon as any message comes in
         if (loadingIndicator) loadingIndicator.style.display = 'none';
         
-        // Clear previous errors/status unless it's a loading message
         if (message.type !== 'showLoading' && errorContainer) {
             errorContainer.textContent = '';
             errorContainer.style.display = 'none';
         }
         if (message.type !== 'showLoading' && statusMessageElement) {
              if (message.type !== 'statusMessage') {
-                 statusMessageElement.textContent = 'Finished'; // Default status unless overridden
+                 statusMessageElement.textContent = 'Finished'; 
              }
         }
         if (message.type !== 'showLoading' && rowCountInfoElement) {
              if (message.type !== 'resultData') {
-                  rowCountInfoElement.textContent = ''; // Clear count unless results are coming
+                  rowCountInfoElement.textContent = ''; 
                   if (truncationWarningElement) truncationWarningElement.style.display = 'none';
                   if (exportButton) exportButton.style.display = 'none';
              }
@@ -157,18 +200,20 @@ if (typeof Tabulator === 'undefined') {
         switch (message.type) {
             case 'showLoading':
                 console.log("Received showLoading message");
-                if (table) table.clearData(); // Clear existing table data
+                if (currentGridApi) currentGridApi.setGridOption('rowData', []); // Clear data
                 if (loadingIndicator) loadingIndicator.style.display = 'flex';
                 if (statusMessageElement) statusMessageElement.textContent = 'Executing query...';
                 if (rowCountInfoElement) rowCountInfoElement.textContent = '';
                 if (errorContainer) errorContainer.style.display = 'none';
+                if (currentGridApi) currentGridApi.showLoadingOverlay();
                 break;
 
             case 'resultData':
                 console.log(`Received resultData: ${message.data?.rows?.length} rows shown`);
-                console.log(`Truncated: ${message.data.wasTruncated}, Total in batch: ${message.data.totalRowsInFirstBatch}, Next URI: ${!!message.data.nextUri}`);
+                console.log(`Truncated: ${message.data.wasTruncated}, Total in batch: ${message.data.totalRowsInFirstBatch}`);
                 try {
-                    initializeTable(
+                    if (currentGridApi) currentGridApi.hideOverlay(); // Hide loading overlay
+                    initializeGrid(
                         message.data.columns, 
                         message.data.rows, 
                         message.data.wasTruncated, 
@@ -177,7 +222,8 @@ if (typeof Tabulator === 'undefined') {
                     if (statusMessageElement) statusMessageElement.textContent = 'Finished';
                     if (errorContainer) errorContainer.style.display = 'none';
                 } catch (e) {
-                    console.error("Error initializing table:", e);
+                    console.error("Error initializing grid:", e);
+                    if (currentGridApi) currentGridApi.hideOverlay();
                     if (errorContainer) {
                         errorContainer.textContent = `Error displaying results: ${e.message}`;
                         errorContainer.style.display = 'block';
@@ -188,10 +234,13 @@ if (typeof Tabulator === 'undefined') {
 
             case 'queryError':
                 console.error("Received queryError:", message.error);
-                if (table) table.clearData();
+                if (currentGridApi) {
+                    currentGridApi.setGridOption('rowData', []);
+                    currentGridApi.hideOverlay();
+                }
                 if (errorContainer) {
                     errorContainer.textContent = `Query Error: ${message.error.message}`;
-                    if (message.error.details) { // Avoid overly long details in the main view, log to console instead
+                    if (message.error.details) {
                          console.error("Error Details:", message.error.details);
                     }
                     errorContainer.style.display = 'block';
@@ -204,7 +253,11 @@ if (typeof Tabulator === 'undefined') {
                 
             case 'statusMessage':
                 console.log("Received statusMessage:", message.message);
-                 if (table) table.clearData();
+                 if (currentGridApi) {
+                    currentGridApi.setGridOption('rowData', []);
+                    // Potentially show a specific overlay for status messages if desired
+                    // currentGridApi.showNoRowsOverlay(); 
+                 }
                  if (statusMessageElement) statusMessageElement.textContent = message.message;
                  if (rowCountInfoElement) rowCountInfoElement.textContent = '';
                  if (truncationWarningElement) truncationWarningElement.style.display = 'none';
@@ -214,7 +267,5 @@ if (typeof Tabulator === 'undefined') {
         }
     });
 
-    // Optional: Inform the extension host that the webview is ready
-    // vscode.postMessage({ command: 'webviewReady' });
-    console.log("Results view script loaded and ready.");
+    console.log("AG Grid results view script loaded and ready.");
 } 
