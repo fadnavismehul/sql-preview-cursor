@@ -174,6 +174,9 @@ body {
     --ag-icon-color: var(--vscode-icon-foreground);
     --ag-icon-disabled-color: var(--vscode-disabledForeground);
 
+    /* Ensure menu icons are specifically targeted for visibility */
+    --ag-header-menu-button-display: inline-block; /* Ensure the button container is shown */
+
     /* Range Selection */
     --ag-range-selection-border-color: var(--vscode-editor-selectionBackground);
     --ag-range-selection-background-color: var(--vscode-editor-selectionBackground);
@@ -192,6 +195,34 @@ body {
 
 .ag-theme-quartz .ag-header-cell {
     padding: 0 8px; /* Adjust header cell padding */
+}
+
+/* Style for the menu icon itself */
+.ag-theme-quartz .ag-header-cell .ag-header-cell-menu-button .ag-icon-menu,
+.ag-theme-quartz .ag-header-cell .ag-header-cell-menu-button svg { /* Target our custom SVG directly too */
+    fill: var(--vscode-icon-foreground, currentColor) !important; /* Fallback to currentColor */
+    stroke: var(--vscode-icon-foreground, currentColor) !important; /* Fallback for stroke */
+    width: 12px !important;
+    height: 12px !important;
+    display: inline-block !important;
+    opacity: 1 !important;
+    position: relative !important; /* Ensure it's not out of flow */
+    line-height: 1 !important; /* Prevent text line height issues */
+    font-family: initial !important; /* Reset font family that might interfere */
+    background: none !important; /* Ensure no background is hiding it */
+    border: none !important; /* Ensure no border is hiding it */
+    vertical-align: middle !important; /* Align it better */
+    overflow: visible !important; /* Ensure SVG content isn't clipped */
+}
+
+/* Ensure the button itself is visible and has some space */
+.ag-theme-quartz .ag-header-cell-menu-button {
+    display: inline-flex !important; /* Use flex to center icon */
+    align-items: center;
+    justify-content: center;
+    width: auto !important; /* Adjust width as needed */
+    height: auto !important; /* Adjust height as needed */
+    padding: 2px !important; /* Give it some space */
 }
 
 .ag-theme-quartz .ag-cell {

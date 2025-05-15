@@ -53,7 +53,7 @@ if (typeof agGrid === 'undefined') {
             sortable: true,
             filter: true, // Basic filter, can be 'agTextColumnFilter', true, etc.
             resizable: true,
-            floatingFilter: false,
+            floatingFilter: true,
             headerTooltip: `${col.name} (${col.type})`, // Show type in tooltip
             // Example for numeric alignment - this requires `type` on the colDef.
             // One way to handle type-specifics:
@@ -67,7 +67,7 @@ if (typeof agGrid === 'undefined') {
         // Add Row Number column (pinned to the left)
         const rowNumColDef = {
             headerName: '#',
-            valueGetter: 'node.rowIndex + 1',
+            valueGetter: params => params.node.rowIndex + 1,
             width: 60, 
             pinned: 'left',
             resizable: false,
@@ -91,7 +91,7 @@ if (typeof agGrid === 'undefined') {
             rowData: agGridRowData,
             pagination: true,
             paginationPageSize: 50,
-            paginationPageSizeSelector: [50, 100, 250, 500, 0], // 0 for 'all'
+            paginationPageSizeSelector: [50, 100, 250, 500],
             domLayout: 'normal', // 'autoHeight' or 'normal' or 'print'
             // `height` is set on the div, AG Grid will fill it.
             // For column sizing to fill width:
@@ -118,17 +118,52 @@ if (typeof agGrid === 'undefined') {
             // Loading overlay (can be customized)
             overlayLoadingTemplate: '<span class="ag-overlay-loading-center">Please wait while your rows are loading</span>',
 
+            icons: {
+                // All custom SVGs are removed.
+                // AG Grid will use its default Quartz theme icons for everything,
+                // as they seem to be loading correctly now thanks to CSP adjustments.
+            },
+
             onGridReady: (params) => {
-                currentGridApi = params.api;
+                if (!currentGridApi) {
+                    currentGridApi = params.api;
+                    console.log("AG Grid: API set via onGridReady as fallback.");
+                } else if (currentGridApi !== params.api) {
+                    console.warn("AG Grid: API from createGrid and onGridReady mismatch. This is unexpected.");
+                    currentGridApi = params.api;
+                }
+
+                console.log("AG Grid: Grid is ready.");
+                console.log("AG Grid: Configured icons:", gridOptions.icons); // Log defined icons
                  // Example: auto-size columns to fit content after data loads
                 // params.api.autoSizeAllColumns();
             },
+
+            onColumnMenuVisibleChanged: (event) => {
+                console.log("AG Grid: Column Menu Visible Changed:", event);
+                console.log(` - Column ID: ${event.column ? event.column.getId() : 'N/A'}`);
+                console.log(` - Is Visible: ${event.visible}`);
+                if (event.column && event.visible) {
+                    // Try to find the menu button element for this column header
+                    const colId = event.column.getId();
+                    const headerCell = gridElement.querySelector(`.ag-header-cell[col-id="${colId}"]`);
+                    if (headerCell) {
+                        const menuButton = headerCell.querySelector('.ag-header-cell-menu-button');
+                        console.log(" - Menu button DOM element:", menuButton);
+                        if (menuButton) {
+                            console.log("   - Menu button inner HTML:", menuButton.innerHTML);
+                            console.log("   - Menu button class list:", menuButton.classList);
+                        }
+                    }
+                }
+            }
         };
 
         // Create AG Grid instance
         // Ensure the grid div is in the DOM and visible before creating the grid
         if (gridElement) {
-            new agGrid.Grid(gridElement, gridOptions);
+            currentGridApi = agGrid.createGrid(gridElement, gridOptions);
+            console.log("AG Grid: Instance created via createGrid.");
         } else {
             console.error("AG Grid target element not found when creating grid.");
         }

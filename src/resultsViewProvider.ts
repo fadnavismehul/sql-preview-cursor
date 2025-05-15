@@ -113,10 +113,24 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
         // URI for the main CSS file for the webview
         const stylesUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'webviews', 'results', 'resultsView.css'));
         
-        // --- AG Grid URIs (using unpkg CDN) ---
+        // AG Grid CDN URIs (Community and Quartz theme)
+        // Ensure these are major versions or have SRI if possible for security.
         const agGridScriptUri = "https://unpkg.com/ag-grid-community@31.3.2/dist/ag-grid-community.min.js";
         const agGridStylesUri = "https://unpkg.com/ag-grid-community@31.3.2/styles/ag-grid.css";
-        const agGridThemeStylesUri = "https://unpkg.com/ag-grid-community@31.3.2/styles/ag-theme-quartz.css"; // Using Quartz theme
+        const agGridThemeStylesUri = "https://unpkg.com/ag-grid-community@31.3.2/styles/ag-theme-quartz.css";
+
+        // Content Security Policy
+        // Allow scripts with nonce, scripts from unpkg.com (for AG Grid), and inline styles (for themes/grid itself).
+        // Added unpkg.com to style-src, font-src, and img-src for AG Grid assets.
+        const cspSource = webview.cspSource; // vscode-resource:
+        const csp = `
+            default-src 'none'; 
+            script-src 'nonce-${nonce}' https://unpkg.com;
+            style-src ${cspSource} 'unsafe-inline' https://unpkg.com;
+            font-src ${cspSource} https://unpkg.com https: data:;
+            img-src ${cspSource} https://unpkg.com https: data:;
+            connect-src https://*.myteksi.net https://sentry.io ${cspSource};
+        `;
 
         return `<!DOCTYPE html>
             <html lang="en">
@@ -124,14 +138,7 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
                 <meta charset="UTF-8">
 
                 <!-- Content Security Policy -->
-                <meta http-equiv="Content-Security-Policy" content="
-                    default-src 'none'; 
-                    style-src ${webview.cspSource} 'unsafe-inline' https://unpkg.com; 
-                    script-src 'nonce-${nonce}' https://unpkg.com;
-                    connect-src https://unpkg.com; 
-                    img-src ${webview.cspSource} https: data:;
-                    font-src ${webview.cspSource} https:;
-                ">
+                <meta http-equiv="Content-Security-Policy" content="${csp}">
                 
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 
