@@ -53,7 +53,7 @@ if (typeof agGrid === 'undefined') {
             sortable: true,
             filter: true, // Basic filter, can be 'agTextColumnFilter', true, etc.
             resizable: true,
-            floatingFilter: true, // Similar to headerFilter: 'input'
+            floatingFilter: false,
             headerTooltip: `${col.name} (${col.type})`, // Show type in tooltip
             // Example for numeric alignment - this requires `type` on the colDef.
             // One way to handle type-specifics:
