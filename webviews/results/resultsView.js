@@ -24,8 +24,81 @@ if (typeof agGrid === 'undefined') {
     let activeTabId = null;
     let nextTabId = 1;
 
+    // --- State Persistence Functions ---
+    function saveState() {
+        const state = {
+            tabs: tabs.map(tab => ({
+                id: tab.id,
+                title: tab.title,
+                query: tab.query,
+                data: tab.data // Store the data for restoration
+            })),
+            activeTabId: activeTabId,
+            nextTabId: nextTabId
+        };
+        vscode.setState(state);
+        console.log('State saved:', state);
+    }
+
+    function restoreState() {
+        const state = vscode.getState();
+        console.log('Restoring state:', state);
+        
+        if (state && state.tabs && state.tabs.length > 0) {
+            // Clear any existing tabs
+            tabs = [];
+            document.getElementById('tab-list').innerHTML = '';
+            document.getElementById('tab-content-container').innerHTML = '<div id="no-tabs-message" class="no-tabs-message"><p>Execute a SQL query to create your first results tab</p></div>';
+            
+            // Restore tabs
+            nextTabId = state.nextTabId || 1;
+            
+            state.tabs.forEach(savedTab => {
+                // Recreate tab without incrementing nextTabId (and skip state updates during restore)
+                const tab = createTab(savedTab.query, savedTab.title, savedTab.id, true);
+                
+                // Restore data if available
+                if (savedTab.data && savedTab.data.columns && savedTab.data.rows) {
+                    tab.data = savedTab.data;
+                    // Recreate the grid with the saved data
+                    setTimeout(() => {
+                        try {
+                            initializeGrid(
+                                tab.id,
+                                savedTab.data.columns,
+                                savedTab.data.rows,
+                                savedTab.data.wasTruncated || false,
+                                savedTab.data.totalRowsInFirstBatch || savedTab.data.rows.length
+                            );
+                        } catch (error) {
+                            console.error(`Failed to restore grid for tab ${tab.id}:`, error);
+                        }
+                    }, 100);
+                } else {
+                    // Set a placeholder message for tabs without data
+                    const elements = getTabElements(tab.id);
+                    if (elements && elements.statusMessageElement) {
+                        elements.statusMessageElement.textContent = 'Ready';
+                    }
+                }
+            });
+            
+            // Restore active tab (skip state update during restore)
+            if (state.activeTabId) {
+                activateTab(state.activeTabId, true);
+            } else if (tabs.length > 0) {
+                activateTab(tabs[0].id, true);
+            }
+            
+            // Hide no-tabs message if tabs exist
+            if (tabs.length > 0) {
+                document.getElementById('no-tabs-message').style.display = 'none';
+            }
+        }
+    }
+
     // --- Tab Management Functions ---
-    function createTab(query, title, providedTabId) {
+    function createTab(query, title, providedTabId, skipStateUpdate = false) {
         const tabId = providedTabId || `tab-${nextTabId++}`;
         const shortQuery = query.length > 50 ? query.substring(0, 50) + '...' : query;
         const tabTitle = title || `Query ${nextTabId}`;
@@ -99,12 +172,17 @@ if (typeof agGrid === 'undefined') {
         noTabsMessage.style.display = 'none';
         
         // Activate the new tab
-        activateTab(tabId);
+        activateTab(tabId, skipStateUpdate);
+        
+        // Save state after creating tab (unless we're restoring)
+        if (!skipStateUpdate) {
+            saveState();
+        }
         
         return tab;
     }
 
-    function activateTab(tabId) {
+    function activateTab(tabId, skipStateUpdate = false) {
         // Deactivate all tabs
         document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
         document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
@@ -117,6 +195,11 @@ if (typeof agGrid === 'undefined') {
             tabElement.classList.add('active');
             tabContent.classList.add('active');
             activeTabId = tabId;
+            
+            // Save state after activating tab (unless we're restoring)
+            if (!skipStateUpdate) {
+                saveState();
+            }
         }
     }
 
@@ -152,6 +235,9 @@ if (typeof agGrid === 'undefined') {
                 noTabsMessage.style.display = 'flex';
             }
         }
+        
+        // Save state after closing tab
+        saveState();
     }
 
     function getActiveTab() {
@@ -402,6 +488,9 @@ if (typeof agGrid === 'undefined') {
         tab.data = { columns, rows: data, wasTruncated, totalRowsInFirstBatch };
         
         updateRowCount(tabId, data.length, totalRowsInFirstBatch, wasTruncated);
+        
+        // Save state after updating tab data
+        saveState();
 
         if (elements.exportButton) {
              elements.exportButton.style.display = (totalRowsInFirstBatch > 0) ? 'inline-block' : 'none';
@@ -653,6 +742,13 @@ if (typeof agGrid === 'undefined') {
                 break;
         }
     });
+
+    // Restore state when webview loads
+    try {
+        restoreState();
+    } catch (error) {
+        console.error('Failed to restore state:', error);
+    }
 
     console.log("AG Grid results view script loaded and ready.");
 } 
