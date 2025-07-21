@@ -93,15 +93,9 @@ if (typeof agGrid === 'undefined') {
         const agGridColumnDefs = columns.map(col => ({
             headerName: col.name,
             field: col.name,
-            sortable: true,
-            filter: true, // Basic filter, can be 'agTextColumnFilter', true, etc.
-            resizable: true,
             floatingFilter: true,
             headerTooltip: `${col.name} (${col.type})`, // Show type in tooltip
-            // Example for numeric alignment - this requires `type` on the colDef.
-            // One way to handle type-specifics:
-            // cellClass: isNumericType(col.type) ? 'ag-right-aligned-cell' : 'ag-left-aligned-cell',
-            // Or AG Grid has built-in types:
+            // AG Grid has built-in types for numeric columns
             type: isNumericType(col.type) ? 'numericColumn' : undefined,
             // For value formatting (e.g. numbers, dates) - can be added later
             // valueFormatter: params => formatValue(params.value, col.type)
@@ -137,19 +131,14 @@ if (typeof agGrid === 'undefined') {
             paginationPageSizeSelector: [50, 100, 250, 500],
             domLayout: 'normal', // 'autoHeight' or 'normal' or 'print'
             // `height` is set on the div, AG Grid will fill it.
-            // For column sizing to fill width:
-            autoSizeStrategy: {
-                type: 'fitGridWidth',
-                defaultMinWidth: 100,
+            // Use defaultColDef to set column behavior instead of autoSizeStrategy
+            defaultColDef: {
+                resizable: true,
+                sortable: true,
+                filter: true,
+                minWidth: 80, // minimum width to prevent columns from becoming too small
+                // Don't set flex here - let autoSizeAllColumns() determine the width
             },
-            // Or make columns flexible
-            // defaultColDef: {
-            //     flex: 1,
-            //     minWidth: 100, // ensure columns are not too small
-            //     resizable: true,
-            //     sortable: true,
-            //     filter: true,
-            // },
             animateRows: true,
             enableCellTextSelection: true, // Allows text selection for copying
             ensureDomOrder: true, // Important for text selection
@@ -203,9 +192,12 @@ if (typeof agGrid === 'undefined') {
 
                 console.log("AG Grid: Grid is ready.");
                 console.log("AG Grid: Configured icons:", gridOptions.icons); // Log defined icons
-                // Auto-size columns to fit content after data loads
-                // Consider skipHeader = false if available and desired, otherwise default behavior.
-                params.api.autoSizeAllColumns();
+                
+                // Auto-size columns to fit content, including headers
+                // Use timeout to ensure all data is rendered before sizing
+                setTimeout(() => {
+                    params.api.autoSizeAllColumns();
+                }, 100);
 
                 // Add keydown listener for custom CSV copy
                 if (gridElement && currentGridApi) {
