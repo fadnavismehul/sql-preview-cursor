@@ -53,6 +53,7 @@ Add the following configuration to your VS Code `settings.json`:
 Results will appear in the "Presto Results" panel in the Activity Bar. The results view provides:
 
 - Sortable columns (click column headers)
+- Filterable columns (using floating filters below column headers)
 - Resizable columns (drag column borders)
 - Copy functionality (right-click on cells)
 

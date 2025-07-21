@@ -29,6 +29,49 @@ if (typeof agGrid === 'undefined') {
     // --- State --- 
     // currentData and currentColumns might not be needed in the same way, AG Grid manages its own state.
 
+    // --- Helper function for CSV Export ---
+    function exportSelectedRowsToCsv(gridApi) {
+        const selectedNodes = gridApi.getSelectedNodes();
+        if (!selectedNodes || selectedNodes.length === 0) {
+            // vscode.postMessage({ command: 'showInfo', text: 'No rows selected for copying.' });
+            return null;
+        }
+
+        // Get all displayed columns that have a 'field' (i.e., are data columns, not the row number column)
+        const displayedDataColumns = gridApi.getAllDisplayedColumns().filter(col => col.getColDef().field);
+
+        if (!displayedDataColumns.length) {
+            // vscode.postMessage({ command: 'showInfo', text: 'No data columns to export.' });
+            return null; 
+        }
+
+        // Create header row from displayed data columns
+        const headerRow = displayedDataColumns.map(column => {
+            const colDef = column.getColDef();
+            return colDef.headerName || colDef.field; // Use headerName if available, otherwise field
+        });
+
+        let csvContent = "";
+        // Add headers
+        csvContent += headerRow.map(header => `"${String(header).replace(/"/g, '""')}"`).join(',') + '\\r\\n';
+
+        // Create data rows
+        selectedNodes.forEach(node => {
+            const rowData = [];
+            displayedDataColumns.forEach(column => {
+                const colDef = column.getColDef(); // Field is guaranteed to exist due to filter above
+                let value = node.data[colDef.field];
+                if (value === null || typeof value === 'undefined') {
+                    value = '';
+                }
+                // Escape double quotes and ensure value is stringified
+                rowData.push(`"${String(value).replace(/"/g, '""')}"`);
+            });
+            csvContent += rowData.join(',') + '\\r\\n';
+        });
+        return csvContent;
+    }
+
     // --- Initialize Grid Function ---
     function initializeGrid(columns, data, wasTruncated, totalRowsInFirstBatch) {
         if (!gridElement) {
@@ -68,7 +111,7 @@ if (typeof agGrid === 'undefined') {
         const rowNumColDef = {
             headerName: '#',
             valueGetter: params => params.node.rowIndex + 1,
-            width: 60, 
+            width: 45, 
             pinned: 'left',
             resizable: false,
             sortable: false,
@@ -118,6 +161,9 @@ if (typeof agGrid === 'undefined') {
             // Loading overlay (can be customized)
             overlayLoadingTemplate: '<span class="ag-overlay-loading-center">Please wait while your rows are loading</span>',
 
+            rowSelection: 'multiple', // Enable row selection
+            suppressRowClickSelection: true, // We'll handle selection via cell click on the row number column
+
             icons: {
                 // All custom SVGs are removed.
                 // AG Grid will use its default Quartz theme icons for everything,
@@ -133,10 +179,39 @@ if (typeof agGrid === 'undefined') {
                     currentGridApi = params.api;
                 }
 
+                // --- Debug Logging for Theme Variables ---
+                console.log("--- AG Grid Theme Debug --- ");
+                const computedStyles = getComputedStyle(document.body);
+                const logStyle = (varName) => console.log(`${varName}: '${computedStyles.getPropertyValue(varName).trim()}'`)
+
+                logStyle('--vscode-editor-foreground');
+                logStyle('--vscode-editor-background');
+                logStyle('--vscode-editorGutter-background');
+                logStyle('--vscode-font-family');
+                logStyle('--vscode-list-activeSelectionBackground');
+                logStyle('--vscode-list-activeSelectionForeground');
+                logStyle('--vscode-input-foreground');
+                logStyle('--vscode-input-background');
+                
+                console.log("Grid Options used:", gridOptions);
+                if (gridOptions.columnDefs && gridOptions.columnDefs.length > 1) {
+                    console.log("Sample ColumnDef (data column):", gridOptions.columnDefs[1]);
+                }
+                console.log("Current Grid API:", currentGridApi);
+                console.log("--- End AG Grid Theme Debug ---");
+                // --- End Debug Logging ---
+
                 console.log("AG Grid: Grid is ready.");
                 console.log("AG Grid: Configured icons:", gridOptions.icons); // Log defined icons
-                 // Example: auto-size columns to fit content after data loads
-                // params.api.autoSizeAllColumns();
+                // Auto-size columns to fit content after data loads
+                // Consider skipHeader = false if available and desired, otherwise default behavior.
+                params.api.autoSizeAllColumns();
+
+                // Add keydown listener for custom CSV copy
+                if (gridElement && currentGridApi) {
+                    gridElement.removeEventListener('keydown', handleGridKeyDown); // Remove previous if any
+                    gridElement.addEventListener('keydown', handleGridKeyDown);
+                }
             },
 
             onColumnMenuVisibleChanged: (event) => {
@@ -155,6 +230,13 @@ if (typeof agGrid === 'undefined') {
                             console.log("   - Menu button class list:", menuButton.classList);
                         }
                     }
+                }
+            },
+
+            onCellClicked: (params) => {
+                // If click is on the row number column, select the row
+                if (params.colDef.headerName === '#') {
+                    params.node.setSelected(!params.node.isSelected());
                 }
             }
         };
@@ -180,6 +262,38 @@ if (typeof agGrid === 'undefined') {
                     vscode.postMessage({ command: 'alert', text: 'Grid not available for export.' });
                 }
             };
+        }
+    }
+
+    // --- Grid Keydown Handler for Custom Copy ---
+    function handleGridKeyDown(event) {
+        if (!currentGridApi) return;
+
+        // Check for Ctrl+C (Windows/Linux) or Cmd+C (Mac)
+        if ((event.ctrlKey || event.metaKey) && event.key === 'c') {
+            if (currentGridApi.getSelectedNodes().length > 0) {
+                // Check if the focused element is part of the grid or an input inside the grid
+                // This helps avoid overriding copy from filter inputs etc.
+                const activeElement = document.activeElement;
+                const isGridFocused = gridElement.contains(activeElement) && activeElement.tagName !== 'INPUT' && activeElement.tagName !== 'TEXTAREA';
+
+                if (isGridFocused) {
+                    const csvData = exportSelectedRowsToCsv(currentGridApi);
+                    if (csvData) {
+                        navigator.clipboard.writeText(csvData)
+                            .then(() => {
+                                console.log('Selected rows copied to clipboard as CSV with headers.');
+                                // Optional: provide feedback to the user e.g. via a temporary message
+                                vscode.postMessage({ command: 'showInfo', text: 'Selected rows copied as CSV.' });
+                            })
+                            .catch(err => {
+                                console.error('Failed to copy selected rows to clipboard: ', err);
+                                vscode.postMessage({ command: 'showError', text: 'Failed to copy as CSV. See console for details.' });
+                            });
+                        event.preventDefault(); // Prevent default copy action of AG Grid / browser
+                    }
+                }
+            }
         }
     }
 

@@ -1,5 +1,11 @@
 /* Enhanced styling for the results webview - Aiming for cleaner look */
 
+/* Ensure HTML and Body pick up base styles */
+html {
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+}
+
 /* Base body inherits VS Code styles */
 body {
     font-family: var(--vscode-font-family);
@@ -111,35 +117,44 @@ body {
 
 /* AG Grid Theme Overrides - Targeting .ag-theme-quartz specifically */
 .ag-theme-quartz {
-    /* Core variables */
+    /* Core variables: Pipe VS Code theme into AG Grid variables */
+    /* REMOVE --ag-font-family from here. It will be defined in theme-specific blocks. */
+    --ag-font-size: var(--vscode-font-size); /* Still use VSCode's font size preference */
+    
+    /* Default background colors - will be overridden by theme specific rules */
+    /* These might also be better scoped inside theme blocks if issues persist, but let's focus on font first. */
     --ag-background-color: var(--vscode-editor-background);
-    --ag-foreground-color: var(--vscode-editor-foreground);
-    --ag-border-color: var(--vscode-editorWidget-border, #454545);
-    --ag-secondary-border-color: var(--vscode-tree-indentGuidesStroke, #585858); /* for cell borders */
-    --ag-row-border-color: var(--vscode-editorWidget-border, #454545);
-    --ag-font-family: var(--vscode-font-family);
-    --ag-font-size: var(--vscode-font-size);
+    --ag-foreground-color: var(--vscode-editor-foreground); /* General text color for grid content */
+    --ag-secondary-foreground-color: var(--vscode-descriptionForeground); /* For less prominent text */
+    
+    /* Borders - Using more specific theme variables */
+    --ag-border-color: var(--vscode-editorWidget-border, var(--vscode-contrastBorder, #454545)); /* General borders */
+    --ag-secondary-border-color: var(--vscode-tree-indentGuidesStroke, var(--vscode-editorGroup-border, #585858)); /* For cell borders, panel separators */
+    --ag-row-border-color: var(--vscode-editorRuler-foreground, var(--vscode-editorWidget-border, #454545)); /* Border between rows */
 
     /* Header */
-    --ag-header-background-color: var(--vscode-editorWidget-background, #252526);
-    --ag-header-foreground-color: var(--vscode-editor-foreground);
+    /* Attempting more specific header variables, fallback to editor widget if not distinct */
+    --ag-header-background-color: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-editorWidget-background, #252526));
+    --ag-header-foreground-color: var(--vscode-tab-activeForeground, var(--vscode-editor-foreground));
     --ag-header-height: 30px; /* Adjust as needed */
     --ag-header-cell-hover-background-color: var(--vscode-list-hoverBackground, #2a2d2e);
     --ag-header-cell-moving-background-color: var(--vscode-list-activeSelectionBackground, #094771);
 
     /* Rows */
-    --ag-row-background-color: var(--vscode-editor-background);
-    --ag-odd-row-background-color: var(--vscode-editorGutter-background, var(--vscode-editorWidget-background, #2c2c2c)); /* Subtle difference for odd rows */
-    --ag-row-hover-color: var(--vscode-list-hoverBackground, #2a2d2e);
-    --ag-row-selected-background-color: var(--vscode-list-activeSelectionBackground, #094771);
-    --ag-row-selected-foreground-color: var(--vscode-list-activeSelectionForeground, #ffffff);
-    --ag-row-height: 28px; /* Adjust for density */
+    --ag-row-background-color: var(--vscode-editor-background); /* Base for all rows */
+    /* Using editorWidget-background for a potentially more subtle odd row color */
+    --ag-odd-row-background-color: var(--vscode-editorWidget-background, var(--vscode-editorGutter-background, #2c2c2c)); 
+    --ag-row-hover-color: var(--vscode-list-hoverBackground, #2a2d2e); /* Hovered row */
+    /* AG Grid uses '--ag-selected-row-background-color' and '--ag-selected-row-foreground-color' for selected rows */
+    --ag-selected-row-background-color: var(--vscode-list-activeSelectionBackground, #094771);
+    --ag-selected-row-foreground-color: var(--vscode-list-activeSelectionForeground, #ffffff);
+    --ag-row-height: 20px; /* As per current file content */
 
     /* Cells */
-    --ag-cell-horizontal-border: 1px solid var(--ag-secondary-border-color);
+    --ag-cell-horizontal-border: 1px solid var(--ag-secondary-border-color); /* Uses the themed secondary border */
     --ag-cell-data-changed-color: var(--vscode-editorGutter-modifiedBackground, yellow); /* For flashing cells */
     
-    /* Inputs (like filters) */
+    /* Inputs (like filters) - these seem okay, relying on VSCode input variables */
     --ag-input-background-color: var(--vscode-input-background);
     --ag-input-foreground-color: var(--vscode-input-foreground);
     --ag-input-border-color: var(--vscode-input-border);
@@ -185,7 +200,6 @@ body {
     --ag-range-selection-background-color-4: var(--vscode-editor-selectionBackground);
      --ag-range-selection-highlight-color: var(--vscode-peekViewResult-selectionBackground);
 
-
 }
 
 /* Specific overrides if AG Grid CSS variables are not enough */
@@ -193,41 +207,60 @@ body {
     border-bottom: 1px solid var(--ag-border-color);
 }
 
-.ag-theme-quartz .ag-header-cell {
-    padding: 0 8px; /* Adjust header cell padding */
+/* NO LONGER DEFINING --ag-font-family directly here */
+/* It will be defined in theme-specific blocks */
+
+/* Theme-specific overrides for AG Grid variables and direct styles */
+body.vscode-light .ag-theme-quartz {
+    /* Define font specifically for light theme */
+    --ag-font-family: 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', Courier, monospace;
+
+    /* Light theme specific AG Grid colors */
+    --ag-background-color: var(--vscode-editor-background) !important;
+    --ag-row-background-color: var(--vscode-editor-background) !important;
+    --ag-odd-row-background-color: var(--vscode-editorWidget-background, var(--vscode-editorGutter-background)) !important;
+    --ag-header-background-color: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-editorWidget-background)) !important;
+    --ag-header-foreground-color: var(--vscode-tab-activeForeground, var(--vscode-editor-foreground)) !important;
+    --ag-foreground-color: var(--vscode-editor-foreground) !important; /* This will be used by cells */
 }
 
-/* Style for the menu icon itself */
-.ag-theme-quartz .ag-header-cell .ag-header-cell-menu-button .ag-icon-menu,
-.ag-theme-quartz .ag-header-cell .ag-header-cell-menu-button svg { /* Target our custom SVG directly too */
-    fill: var(--vscode-icon-foreground, currentColor) !important; /* Fallback to currentColor */
-    stroke: var(--vscode-icon-foreground, currentColor) !important; /* Fallback for stroke */
-    width: 12px !important;
-    height: 12px !important;
-    display: inline-block !important;
-    opacity: 1 !important;
-    position: relative !important; /* Ensure it's not out of flow */
-    line-height: 1 !important; /* Prevent text line height issues */
-    font-family: initial !important; /* Reset font family that might interfere */
-    background: none !important; /* Ensure no background is hiding it */
-    border: none !important; /* Ensure no border is hiding it */
-    vertical-align: middle !important; /* Align it better */
-    overflow: visible !important; /* Ensure SVG content isn't clipped */
+body.vscode-dark .ag-theme-quartz {
+    /* Define font specifically for dark theme */
+    --ag-font-family: 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', Courier, monospace;
+
+    /* Re-assert dark theme background variables for AG Grid */
+    --ag-background-color: var(--vscode-editor-background) !important;
+    --ag-row-background-color: var(--vscode-editor-background) !important;
+    --ag-odd-row-background-color: var(--vscode-editorGutter-background, var(--vscode-editorWidget-background)) !important; /* Try editorGutter first for dark */
+    --ag-header-background-color: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-editorWidget-background)) !important;
+    --ag-header-foreground-color: var(--vscode-tab-activeForeground, var(--vscode-editor-foreground)) !important;
+    --ag-foreground-color: var(--vscode-editor-foreground) !important; /* This will be used by cells */
 }
 
-/* Ensure the button itself is visible and has some space */
-.ag-theme-quartz .ag-header-cell-menu-button {
-    display: inline-flex !important; /* Use flex to center icon */
-    align-items: center;
-    justify-content: center;
-    width: auto !important; /* Adjust width as needed */
-    height: auto !important; /* Adjust height as needed */
-    padding: 2px !important; /* Give it some space */
+/* Apply the font and color to cells, using the theme-scoped --ag-font-family and --ag-foreground-color */
+body.vscode-light .ag-theme-quartz .ag-cell,
+body.vscode-light .ag-theme-quartz .ag-cell .ag-cell-value { /* Target inner span directly too */
+    font-family: var(--ag-font-family) !important;
+    color: var(--ag-foreground-color) !important; 
 }
 
-.ag-theme-quartz .ag-cell {
-    padding: 0 8px; /* Adjust data cell padding */
-    line-height: var(--ag-row-height); /* Vertically center content in cells */
+body.vscode-dark .ag-theme-quartz .ag-cell,
+body.vscode-dark .ag-theme-quartz .ag-cell .ag-cell-value { /* Target inner span directly too */
+    font-family: var(--ag-font-family) !important;
+    color: var(--ag-foreground-color) !important; 
+}
+
+/* Styling for the row number column # */
+.ag-theme-quartz .ag-pinned-left-cols-container .ag-cell[col-id="0"] { 
+    background-color: var(--vscode-editorGutter-background, var(--vscode-editorWidget-background));
+    color: var(--vscode-editorLineNumber-foreground) !important; 
+    font-weight: bold;
+    font-family: var(--ag-font-family) !important; /* Ensure row number also uses themed monospace font */
+}
+
+/* Ensure selected cells have explicitly set foreground for contrast */
+.ag-theme-quartz .ag-row-selected .ag-cell {
+    color: var(--ag-selected-row-foreground-color) !important;
 }
 
 /* Right align numeric cells (if AG Grid numericColumn type doesn't do it or for custom logic) */
@@ -254,8 +287,9 @@ body {
 /* Style the row number column (#) specially if needed */
 .ag-theme-quartz .ag-pinned-left-cols-container .ag-cell[col-id="0"] { /* Assuming row number is first after pinning */
     background-color: var(--vscode-editorGutter-background, var(--vscode-editorWidget-background));
-    color: var(--vscode-editorLineNumber-foreground);
+    color: var(--vscode-editorLineNumber-foreground) !important; /* More specific theme variable */
     font-weight: bold;
+    font-family: var(--ag-font-family) !important; /* Ensure row number also uses themed font */
 }
 /* Or if using valueGetter: 'node.rowIndex + 1' and it gets an auto colId like 'ag-Grid-AutoColumn-row_index' */
 /* You might need to inspect the generated colId for the row number column */
