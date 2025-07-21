@@ -14,20 +14,169 @@ if (typeof agGrid === 'undefined') {
     const vscode = acquireVsCodeApi();
 
     // --- DOM Elements --- 
-    const gridElement = document.getElementById('results-grid'); // Changed from tableElement
-    const errorContainer = document.getElementById('error-container');
-    const loadingIndicator = document.getElementById('loading-indicator');
-    const statusMessageElement = document.getElementById('status-message');
-    const rowCountInfoElement = document.getElementById('row-count-info');
-    const truncationWarningElement = document.getElementById('truncation-warning');
-    const exportButton = document.getElementById('export-button');
+    const tabList = document.getElementById('tab-list');
+    const tabContentContainer = document.getElementById('tab-content-container');
+    const noTabsMessage = document.getElementById('no-tabs-message');
+    const newTabButton = document.getElementById('new-tab-button');
 
-    // --- AG Grid Instance & Options --- 
-    let gridOptions = null; // Will hold grid options
-    let currentGridApi = null; // Will be the gridApi from AG Grid
+    // --- Tab Management State --- 
+    let tabs = []; // Array of tab objects
+    let activeTabId = null;
+    let nextTabId = 1;
 
-    // --- State --- 
-    // currentData and currentColumns might not be needed in the same way, AG Grid manages its own state.
+    // --- Tab Management Functions ---
+    function createTab(query, title, providedTabId) {
+        const tabId = providedTabId || `tab-${nextTabId++}`;
+        const shortQuery = query.length > 50 ? query.substring(0, 50) + '...' : query;
+        const tabTitle = title || `Query ${nextTabId}`;
+        
+        // Check if tab already exists
+        const existingTab = tabs.find(t => t.id === tabId);
+        if (existingTab) {
+            console.log(`Tab ${tabId} already exists, returning existing tab`);
+            return existingTab;
+        }
+        
+        const tab = {
+            id: tabId,
+            title: tabTitle,
+            query: query,
+            gridApi: null,
+            data: null
+        };
+
+        tabs.push(tab);
+        
+        // Create tab element
+        const tabElement = document.createElement('div');
+        tabElement.className = 'tab';
+        tabElement.setAttribute('data-tab-id', tabId);
+        tabElement.innerHTML = `
+            <span class="tab-title" title="${query}">${tabTitle}</span>
+            <button class="tab-close" title="Close tab">×</button>
+        `;
+        
+        // Create tab content
+        const tabContent = document.createElement('div');
+        tabContent.className = 'tab-content';
+        tabContent.setAttribute('data-tab-id', tabId);
+        tabContent.innerHTML = `
+            <div class="controls">
+                <div>
+                    <span class="status-message">Ready</span>
+                    <span class="row-count-info"></span>
+                    <span class="truncation-warning" style="display: none; color: var(--vscode-descriptionForeground); margin-left: 10px;">(Results limited)</span>
+                </div>
+                <div>
+                    <button class="export-button" style="display: none;" title="Export full results to CSV">Export CSV</button> 
+                </div>
+            </div>
+            <div class="error-container error-message" style="display: none;"></div>
+            <div class="loading-indicator loading" style="display: none;">
+                <div class="spinner"></div> 
+                <span>Loading...</span>
+            </div>
+            <div class="results-grid ag-theme-quartz"></div>
+        `;
+
+        // Add event listeners
+        tabElement.addEventListener('click', (e) => {
+            if (!e.target.classList.contains('tab-close')) {
+                activateTab(tabId);
+            }
+        });
+
+        tabElement.querySelector('.tab-close').addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeTab(tabId);
+        });
+
+        // Add to DOM
+        tabList.appendChild(tabElement);
+        tabContentContainer.appendChild(tabContent);
+        
+        // Hide no-tabs message
+        noTabsMessage.style.display = 'none';
+        
+        // Activate the new tab
+        activateTab(tabId);
+        
+        return tab;
+    }
+
+    function activateTab(tabId) {
+        // Deactivate all tabs
+        document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+        
+        // Activate selected tab
+        const tabElement = document.querySelector(`.tab[data-tab-id="${tabId}"]`);
+        const tabContent = document.querySelector(`.tab-content[data-tab-id="${tabId}"]`);
+        
+        if (tabElement && tabContent) {
+            tabElement.classList.add('active');
+            tabContent.classList.add('active');
+            activeTabId = tabId;
+        }
+    }
+
+    function closeTab(tabId) {
+        const tabIndex = tabs.findIndex(tab => tab.id === tabId);
+        if (tabIndex === -1) return;
+
+        const tab = tabs[tabIndex];
+        
+        // Destroy AG Grid instance if exists
+        if (tab.gridApi) {
+            try {
+                tab.gridApi.destroy();
+            } catch(e) { console.warn("Error destroying grid:", e); }
+        }
+        
+        // Remove from DOM
+        const tabElement = document.querySelector(`.tab[data-tab-id="${tabId}"]`);
+        const tabContent = document.querySelector(`.tab-content[data-tab-id="${tabId}"]`);
+        if (tabElement) tabElement.remove();
+        if (tabContent) tabContent.remove();
+        
+        // Remove from tabs array
+        tabs.splice(tabIndex, 1);
+        
+        // If this was the active tab, activate another one
+        if (activeTabId === tabId) {
+            activeTabId = null;
+            if (tabs.length > 0) {
+                activateTab(tabs[Math.max(0, tabIndex - 1)].id);
+            } else {
+                // Show no-tabs message
+                noTabsMessage.style.display = 'flex';
+            }
+        }
+    }
+
+    function getActiveTab() {
+        return tabs.find(tab => tab.id === activeTabId);
+    }
+
+    function getTabElements(tabId) {
+        const tabContent = document.querySelector(`.tab-content[data-tab-id="${tabId}"]`);
+        if (!tabContent) return null;
+        
+        return {
+            gridElement: tabContent.querySelector('.results-grid'),
+            errorContainer: tabContent.querySelector('.error-container'),
+            loadingIndicator: tabContent.querySelector('.loading-indicator'),
+            statusMessageElement: tabContent.querySelector('.status-message'),
+            rowCountInfoElement: tabContent.querySelector('.row-count-info'),
+            truncationWarningElement: tabContent.querySelector('.truncation-warning'),
+            exportButton: tabContent.querySelector('.export-button')
+        };
+    }
+
+    // Add event listener for new tab button
+    newTabButton.addEventListener('click', () => {
+        vscode.postMessage({ command: 'createNewTab' });
+    });
 
     // --- Helper function for CSV Export ---
     function exportSelectedRowsToCsv(gridApi) {
@@ -73,21 +222,28 @@ if (typeof agGrid === 'undefined') {
     }
 
     // --- Initialize Grid Function ---
-    function initializeGrid(columns, data, wasTruncated, totalRowsInFirstBatch) {
-        if (!gridElement) {
-            console.error("Grid element #results-grid not found!");
+    function initializeGrid(tabId, columns, data, wasTruncated, totalRowsInFirstBatch) {
+        const tab = tabs.find(t => t.id === tabId);
+        if (!tab) {
+            console.error(`Tab ${tabId} not found!`);
+            return;
+        }
+
+        const elements = getTabElements(tabId);
+        if (!elements || !elements.gridElement) {
+            console.error(`Grid element for tab ${tabId} not found!`);
             return;
         }
 
         // Clear previous grid if exists
-        if (currentGridApi) {
+        if (tab.gridApi) {
             try {
-                currentGridApi.destroy();
+                tab.gridApi.destroy();
             } catch(e) { console.warn("Error destroying previous grid:", e); }
-            currentGridApi = null;
+            tab.gridApi = null;
         }
         // Ensure the grid div is empty before creating a new grid
-        gridElement.innerHTML = '';
+        elements.gridElement.innerHTML = '';
 
         // Transform columns for AG Grid
         const agGridColumnDefs = columns.map(col => ({
@@ -160,12 +316,12 @@ if (typeof agGrid === 'undefined') {
             },
 
             onGridReady: (params) => {
-                if (!currentGridApi) {
-                    currentGridApi = params.api;
-                    console.log("AG Grid: API set via onGridReady as fallback.");
-                } else if (currentGridApi !== params.api) {
-                    console.warn("AG Grid: API from createGrid and onGridReady mismatch. This is unexpected.");
-                    currentGridApi = params.api;
+                if (!tab.gridApi) {
+                    tab.gridApi = params.api;
+                    console.log(`AG Grid: API set via onGridReady for tab ${tabId}.`);
+                } else if (tab.gridApi !== params.api) {
+                    console.warn(`AG Grid: API from createGrid and onGridReady mismatch for tab ${tabId}.`);
+                    tab.gridApi = params.api;
                 }
 
                 // --- Debug Logging for Theme Variables ---
@@ -186,11 +342,11 @@ if (typeof agGrid === 'undefined') {
                 if (gridOptions.columnDefs && gridOptions.columnDefs.length > 1) {
                     console.log("Sample ColumnDef (data column):", gridOptions.columnDefs[1]);
                 }
-                console.log("Current Grid API:", currentGridApi);
+                console.log("Current Grid API:", tab.gridApi);
                 console.log("--- End AG Grid Theme Debug ---");
                 // --- End Debug Logging ---
 
-                console.log("AG Grid: Grid is ready.");
+                console.log(`AG Grid: Grid is ready for tab ${tabId}.`);
                 console.log("AG Grid: Configured icons:", gridOptions.icons); // Log defined icons
                 
                 // Auto-size columns to fit content, including headers
@@ -200,9 +356,9 @@ if (typeof agGrid === 'undefined') {
                 }, 100);
 
                 // Add keydown listener for custom CSV copy
-                if (gridElement && currentGridApi) {
-                    gridElement.removeEventListener('keydown', handleGridKeyDown); // Remove previous if any
-                    gridElement.addEventListener('keydown', handleGridKeyDown);
+                if (elements.gridElement && tab.gridApi) {
+                    elements.gridElement.removeEventListener('keydown', handleGridKeyDown); // Remove previous if any
+                    elements.gridElement.addEventListener('keydown', (event) => handleGridKeyDown(event, tabId));
                 }
             },
 
@@ -235,21 +391,23 @@ if (typeof agGrid === 'undefined') {
 
         // Create AG Grid instance
         // Ensure the grid div is in the DOM and visible before creating the grid
-        if (gridElement) {
-            currentGridApi = agGrid.createGrid(gridElement, gridOptions);
-            console.log("AG Grid: Instance created via createGrid.");
+        if (elements.gridElement) {
+            tab.gridApi = agGrid.createGrid(elements.gridElement, gridOptions);
+            console.log(`AG Grid: Instance created via createGrid for tab ${tabId}.`);
         } else {
-            console.error("AG Grid target element not found when creating grid.");
+            console.error(`AG Grid target element not found when creating grid for tab ${tabId}.`);
         }
         
-        updateRowCount(data.length, totalRowsInFirstBatch, wasTruncated);
+        // Store tab data
+        tab.data = { columns, rows: data, wasTruncated, totalRowsInFirstBatch };
+        
+        updateRowCount(tabId, data.length, totalRowsInFirstBatch, wasTruncated);
 
-        if (exportButton) {
-             exportButton.style.display = (totalRowsInFirstBatch > 0) ? 'inline-block' : 'none';
-             // TODO: AG Grid export to CSV: currentGridApi.exportDataAsCsv();
-             exportButton.onclick = () => {
-                if (currentGridApi) {
-                    currentGridApi.exportDataAsCsv();
+        if (elements.exportButton) {
+             elements.exportButton.style.display = (totalRowsInFirstBatch > 0) ? 'inline-block' : 'none';
+             elements.exportButton.onclick = () => {
+                if (tab.gridApi) {
+                    tab.gridApi.exportDataAsCsv();
                 } else {
                     vscode.postMessage({ command: 'alert', text: 'Grid not available for export.' });
                 }
@@ -258,19 +416,21 @@ if (typeof agGrid === 'undefined') {
     }
 
     // --- Grid Keydown Handler for Custom Copy ---
-    function handleGridKeyDown(event) {
-        if (!currentGridApi) return;
+    function handleGridKeyDown(event, tabId) {
+        const tab = tabs.find(t => t.id === tabId);
+        if (!tab || !tab.gridApi) return;
 
         // Check for Ctrl+C (Windows/Linux) or Cmd+C (Mac)
         if ((event.ctrlKey || event.metaKey) && event.key === 'c') {
-            if (currentGridApi.getSelectedNodes().length > 0) {
+            if (tab.gridApi.getSelectedNodes().length > 0) {
                 // Check if the focused element is part of the grid or an input inside the grid
                 // This helps avoid overriding copy from filter inputs etc.
                 const activeElement = document.activeElement;
-                const isGridFocused = gridElement.contains(activeElement) && activeElement.tagName !== 'INPUT' && activeElement.tagName !== 'TEXTAREA';
+                const elements = getTabElements(tabId);
+                const isGridFocused = elements && elements.gridElement.contains(activeElement) && activeElement.tagName !== 'INPUT' && activeElement.tagName !== 'TEXTAREA';
 
                 if (isGridFocused) {
-                    const csvData = exportSelectedRowsToCsv(currentGridApi);
+                    const csvData = exportSelectedRowsToCsv(tab.gridApi);
                     if (csvData) {
                         navigator.clipboard.writeText(csvData)
                             .then(() => {
@@ -290,17 +450,20 @@ if (typeof agGrid === 'undefined') {
     }
 
     // --- Helper Functions ---
-    function updateRowCount(displayedCount, totalInBatch, wasTruncated) {
-        if (rowCountInfoElement) {
+    function updateRowCount(tabId, displayedCount, totalInBatch, wasTruncated) {
+        const elements = getTabElements(tabId);
+        if (!elements) return;
+        
+        if (elements.rowCountInfoElement) {
             let text = `(${displayedCount} row${displayedCount !== 1 ? 's' : ''} shown`;
             if (wasTruncated) {
                  text += ` of ${totalInBatch} (first batch)`;
             }
             text += ')';
-            rowCountInfoElement.textContent = text;
+            elements.rowCountInfoElement.textContent = text;
         }
-        if (truncationWarningElement) {
-             truncationWarningElement.style.display = wasTruncated ? 'inline' : 'none';
+        if (elements.truncationWarningElement) {
+             elements.truncationWarningElement.style.display = wasTruncated ? 'inline' : 'none';
         }
     }
     
@@ -319,91 +482,174 @@ if (typeof agGrid === 'undefined') {
     window.addEventListener('message', event => {
         const message = event.data; 
 
-        if (loadingIndicator) loadingIndicator.style.display = 'none';
+        // Handle tab-specific operations
+        let currentTab = null;
+        let elements = null;
         
-        if (message.type !== 'showLoading' && errorContainer) {
-            errorContainer.textContent = '';
-            errorContainer.style.display = 'none';
+        if (message.tabId) {
+            currentTab = tabs.find(t => t.id === message.tabId);
+            elements = getTabElements(message.tabId);
+        } else if (activeTabId) {
+            currentTab = getActiveTab();
+            elements = getTabElements(activeTabId);
         }
-        if (message.type !== 'showLoading' && statusMessageElement) {
-             if (message.type !== 'statusMessage') {
-                 statusMessageElement.textContent = 'Finished'; 
-             }
-        }
-        if (message.type !== 'showLoading' && rowCountInfoElement) {
-             if (message.type !== 'resultData') {
-                  rowCountInfoElement.textContent = ''; 
-                  if (truncationWarningElement) truncationWarningElement.style.display = 'none';
-                  if (exportButton) exportButton.style.display = 'none';
-             }
+
+        // Clear loading/error states for the current tab
+        if (elements) {
+            if (elements.loadingIndicator) elements.loadingIndicator.style.display = 'none';
+            
+            if (message.type !== 'showLoading' && elements.errorContainer) {
+                elements.errorContainer.textContent = '';
+                elements.errorContainer.style.display = 'none';
+            }
+            if (message.type !== 'showLoading' && elements.statusMessageElement) {
+                 if (message.type !== 'statusMessage') {
+                     elements.statusMessageElement.textContent = 'Finished'; 
+                 }
+            }
+            if (message.type !== 'showLoading' && elements.rowCountInfoElement) {
+                 if (message.type !== 'resultData') {
+                      elements.rowCountInfoElement.textContent = ''; 
+                      if (elements.truncationWarningElement) elements.truncationWarningElement.style.display = 'none';
+                      if (elements.exportButton) elements.exportButton.style.display = 'none';
+                 }
+            }
         }
 
         switch (message.type) {
+            case 'createTab':
+                console.log("Received createTab message", message);
+                const tab = createTab(message.query || 'New Query', message.title, message.tabId);
+                // Auto-show loading for the new tab
+                const newElements = getTabElements(tab.id);
+                if (newElements) {
+                    if (newElements.loadingIndicator) newElements.loadingIndicator.style.display = 'flex';
+                    if (newElements.statusMessageElement) newElements.statusMessageElement.textContent = 'Executing query...';
+                }
+                break;
+
             case 'showLoading':
-                console.log("Received showLoading message");
-                if (currentGridApi) currentGridApi.setGridOption('rowData', []); // Clear data
-                if (loadingIndicator) loadingIndicator.style.display = 'flex';
-                if (statusMessageElement) statusMessageElement.textContent = 'Executing query...';
-                if (rowCountInfoElement) rowCountInfoElement.textContent = '';
-                if (errorContainer) errorContainer.style.display = 'none';
-                if (currentGridApi) currentGridApi.showLoadingOverlay();
+                console.log("Received showLoading message", message);
+                
+                // Find or create the tab with the specific ID
+                if (message.tabId) {
+                    currentTab = tabs.find(t => t.id === message.tabId);
+                    if (!currentTab) {
+                        // Create tab with the specific ID if it doesn't exist
+                        currentTab = createTab(message.query || 'New Query', message.title, message.tabId);
+                    }
+                    elements = getTabElements(currentTab.id);
+                } else if (!elements || !currentTab) {
+                    // Fallback: create a new tab without specific ID
+                    currentTab = createTab(message.query || 'New Query', message.title);
+                    elements = getTabElements(currentTab.id);
+                }
+                
+                if (currentTab && currentTab.gridApi) currentTab.gridApi.setGridOption('rowData', []); // Clear data
+                if (elements) {
+                    if (elements.loadingIndicator) elements.loadingIndicator.style.display = 'flex';
+                    if (elements.statusMessageElement) elements.statusMessageElement.textContent = 'Executing query...';
+                    if (elements.rowCountInfoElement) elements.rowCountInfoElement.textContent = '';
+                    if (elements.errorContainer) elements.errorContainer.style.display = 'none';
+                    if (currentTab && currentTab.gridApi) currentTab.gridApi.showLoadingOverlay();
+                }
                 break;
 
             case 'resultData':
                 console.log(`Received resultData: ${message.data?.rows?.length} rows shown`);
                 console.log(`Truncated: ${message.data.wasTruncated}, Total in batch: ${message.data.totalRowsInFirstBatch}`);
+                console.log(`TabId: ${message.tabId}`);
+                
+                // Find or create the tab with the specific ID
+                if (message.tabId) {
+                    currentTab = tabs.find(t => t.id === message.tabId);
+                    if (!currentTab) {
+                        // Create tab with the specific ID if it doesn't exist
+                        currentTab = createTab(message.data.query || 'New Query', message.title, message.tabId);
+                    }
+                    elements = getTabElements(currentTab.id);
+                } else if (!currentTab) {
+                    // Fallback: create a new tab without specific ID
+                    currentTab = createTab(message.data.query || 'New Query', message.title);
+                    elements = getTabElements(currentTab.id);
+                }
+                
+                if (!currentTab || !elements) {
+                    console.error("No tab available for result data", { currentTab, elements, tabId: message.tabId });
+                    break;
+                }
+                
                 try {
-                    if (currentGridApi) currentGridApi.hideOverlay(); // Hide loading overlay
+                    if (currentTab.gridApi) currentTab.gridApi.hideOverlay(); // Hide loading overlay
                     initializeGrid(
+                        currentTab.id,
                         message.data.columns, 
                         message.data.rows, 
                         message.data.wasTruncated, 
                         message.data.totalRowsInFirstBatch
                     );
-                    if (statusMessageElement) statusMessageElement.textContent = 'Finished';
-                    if (errorContainer) errorContainer.style.display = 'none';
+                    if (elements.statusMessageElement) elements.statusMessageElement.textContent = 'Finished';
+                    if (elements.errorContainer) elements.errorContainer.style.display = 'none';
                 } catch (e) {
                     console.error("Error initializing grid:", e);
-                    if (currentGridApi) currentGridApi.hideOverlay();
-                    if (errorContainer) {
-                        errorContainer.textContent = `Error displaying results: ${e.message}`;
-                        errorContainer.style.display = 'block';
+                    if (currentTab.gridApi) currentTab.gridApi.hideOverlay();
+                    if (elements.errorContainer) {
+                        elements.errorContainer.textContent = `Error displaying results: ${e.message}`;
+                        elements.errorContainer.style.display = 'block';
                     }
-                    if (statusMessageElement) statusMessageElement.textContent = 'Error';
+                    if (elements.statusMessageElement) elements.statusMessageElement.textContent = 'Error';
                 }
                 break;
 
             case 'queryError':
                 console.error("Received queryError:", message.error);
-                if (currentGridApi) {
-                    currentGridApi.setGridOption('rowData', []);
-                    currentGridApi.hideOverlay();
-                }
-                if (errorContainer) {
-                    errorContainer.textContent = `Query Error: ${message.error.message}`;
-                    if (message.error.details) {
-                         console.error("Error Details:", message.error.details);
+                
+                // Find or create the tab with the specific ID
+                if (message.tabId) {
+                    currentTab = tabs.find(t => t.id === message.tabId);
+                    if (!currentTab) {
+                        // Create tab with the specific ID if it doesn't exist
+                        currentTab = createTab(message.query || 'Failed Query', message.title, message.tabId);
                     }
-                    errorContainer.style.display = 'block';
+                    elements = getTabElements(currentTab.id);
+                } else if (!elements && !currentTab) {
+                    // Fallback: create a tab for the error if none exists
+                    currentTab = createTab(message.query || 'Failed Query', message.title);
+                    elements = getTabElements(currentTab.id);
                 }
-                if (statusMessageElement) statusMessageElement.textContent = 'Error';
-                if (rowCountInfoElement) rowCountInfoElement.textContent = '';
-                if (truncationWarningElement) truncationWarningElement.style.display = 'none';
-                if (exportButton) exportButton.style.display = 'none';
+                if (currentTab && currentTab.gridApi) {
+                    currentTab.gridApi.setGridOption('rowData', []);
+                    currentTab.gridApi.hideOverlay();
+                }
+                if (elements) {
+                    if (elements.errorContainer) {
+                        elements.errorContainer.textContent = `Query Error: ${message.error.message}`;
+                        if (message.error.details) {
+                             console.error("Error Details:", message.error.details);
+                        }
+                        elements.errorContainer.style.display = 'block';
+                    }
+                    if (elements.statusMessageElement) elements.statusMessageElement.textContent = 'Error';
+                    if (elements.rowCountInfoElement) elements.rowCountInfoElement.textContent = '';
+                    if (elements.truncationWarningElement) elements.truncationWarningElement.style.display = 'none';
+                    if (elements.exportButton) elements.exportButton.style.display = 'none';
+                }
                 break;
                 
             case 'statusMessage':
                 console.log("Received statusMessage:", message.message);
-                 if (currentGridApi) {
-                    currentGridApi.setGridOption('rowData', []);
+                if (currentTab && currentTab.gridApi) {
+                    currentTab.gridApi.setGridOption('rowData', []);
                     // Potentially show a specific overlay for status messages if desired
-                    // currentGridApi.showNoRowsOverlay(); 
-                 }
-                 if (statusMessageElement) statusMessageElement.textContent = message.message;
-                 if (rowCountInfoElement) rowCountInfoElement.textContent = '';
-                 if (truncationWarningElement) truncationWarningElement.style.display = 'none';
-                 if (exportButton) exportButton.style.display = 'none';
-                 if (errorContainer) errorContainer.style.display = 'none';
+                    // currentTab.gridApi.showNoRowsOverlay(); 
+                }
+                if (elements) {
+                    if (elements.statusMessageElement) elements.statusMessageElement.textContent = message.message;
+                    if (elements.rowCountInfoElement) elements.rowCountInfoElement.textContent = '';
+                    if (elements.truncationWarningElement) elements.truncationWarningElement.style.display = 'none';
+                    if (elements.exportButton) elements.exportButton.style.display = 'none';
+                    if (elements.errorContainer) elements.errorContainer.style.display = 'none';
+                }
                 break;
         }
     });

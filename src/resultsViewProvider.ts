@@ -47,6 +47,15 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
                 case 'alert':
                     vscode.window.showErrorMessage(data.text);
                     return;
+                case 'createNewTab':
+                    this.createTab('New Query');
+                    return;
+                case 'showInfo':
+                    vscode.window.showInformationMessage(data.text);
+                    return;
+                case 'showError':
+                    vscode.window.showErrorMessage(data.text);
+                    return;
                 // Add more cases to handle messages from webview JS
             }
         });
@@ -92,6 +101,79 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
         if (this._view) {
             this._view.show?.(true);
             this._view.webview.postMessage({ type: 'statusMessage', message: message });
+        }
+    }
+    
+    /** Creates a new tab in the webview */
+    public createTab(query: string, title?: string) {
+        if (this._view) {
+            this._view.show?.(true);
+            this._view.webview.postMessage({ 
+                type: 'createTab', 
+                query: query,
+                title: title || `Query ${Date.now()}`
+            });
+        }
+    }
+    
+    /** Creates a new tab with a specific ID in the webview */
+    public createTabWithId(tabId: string, query: string, title?: string) {
+        if (this._view) {
+            this._view.show?.(true);
+            this._view.webview.postMessage({ 
+                type: 'createTab', 
+                tabId: tabId,
+                query: query,
+                title: title || `Query ${Date.now()}`
+            });
+        }
+    }
+    
+    /** Shows loading state for a specific tab */
+    public showLoadingForTab(tabId: string, query?: string, title?: string) {
+        if (this._view) {
+            this._view.show?.(true);
+            this._view.webview.postMessage({ 
+                type: 'showLoading', 
+                tabId: tabId,
+                query: query,
+                title: title
+            });
+        }
+    }
+    
+    /** Shows results for a specific tab */
+    public showResultsForTab(tabId: string, data: {
+        columns: any[], 
+        rows: any[][], 
+        query: string,
+        wasTruncated: boolean,
+        totalRowsInFirstBatch: number,
+        queryId?: string,
+        infoUri?: string,
+        nextUri?: string
+    }) {
+        if (this._view) {
+            this._view.show?.(true);
+            this._view.webview.postMessage({ 
+                type: 'resultData', 
+                tabId: tabId,
+                data: data 
+            });
+        }
+    }
+    
+    /** Shows error for a specific tab */
+    public showErrorForTab(tabId: string, errorMessage: string, errorDetails?: string, query?: string, title?: string) {
+        if (this._view) {
+            this._view.show?.(true);
+            this._view.webview.postMessage({ 
+                type: 'queryError', 
+                tabId: tabId,
+                query: query,
+                title: title,
+                error: { message: errorMessage, details: errorDetails } 
+            });
         }
     }
 
@@ -151,27 +233,23 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
                 <title>Presto Results</title>
             </head>
             <body>
-                <div class="controls">
-                    <div>
-                        <span id="status-message">Ready</span>
-                        <span id="row-count-info"></span>
-                        <span id="truncation-warning" style="display: none; color: var(--vscode-descriptionForeground); margin-left: 10px;">(Results limited)</span>
+                <!-- Tab Container -->
+                <div id="tab-container" class="tab-container">
+                    <div id="tab-list" class="tab-list">
+                        <!-- Tabs will be dynamically added here -->
                     </div>
-                    <div>
-                        <!-- Placeholder for Export Button -->
-                        <button id="export-button" style="display: none;" title="Export full results to CSV">Export CSV</button> 
-                    </div>
+                    <button id="new-tab-button" class="new-tab-button" title="New Query Tab">+</button>
                 </div>
 
-                <div id="error-container" class="error-message" style="display: none;"></div>
-
-                <div id="loading-indicator" class="loading" style="display: none;">
-                     <div class="spinner"></div> 
-                     <span>Loading...</span>
+                <!-- Tab Content Container -->
+                <div id="tab-content-container" class="tab-content-container">
+                    <!-- Default tab content when no tabs exist -->
+                    <div id="no-tabs-message" class="no-tabs-message">
+                        <p>Execute a SQL query to create your first results tab</p>
+                    </div>
+                    
+                    <!-- Tab content will be dynamically added here -->
                 </div>
-
-                <!-- AG Grid Container: Ensure it has a theme class -->
-                <div id="results-grid" class="ag-theme-quartz"></div>
 
                 <!-- Load AG Grid JS -->
                 <script nonce="${nonce}" src="${agGridScriptUri}"></script>

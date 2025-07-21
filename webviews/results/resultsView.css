@@ -20,7 +20,127 @@ body {
     height: 100vh; /* Full viewport height */
 }
 
-/* Controls area styling */
+/* Tab System Styles */
+.tab-container {
+    display: flex;
+    align-items: center;
+    background-color: var(--vscode-tab-border, var(--vscode-editorGroupHeader-tabsBackground));
+    border-bottom: 1px solid var(--vscode-tab-border, var(--vscode-editorWidget-border));
+    padding: 0;
+    flex-shrink: 0;
+    min-height: 32px;
+}
+
+.tab-list {
+    display: flex;
+    flex: 1;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.tab {
+    display: flex;
+    align-items: center;
+    padding: 6px 12px;
+    background-color: var(--vscode-tab-inactiveBackground);
+    color: var(--vscode-tab-inactiveForeground);
+    border-right: 1px solid var(--vscode-tab-border);
+    cursor: pointer;
+    white-space: nowrap;
+    min-width: 120px;
+    max-width: 200px;
+    position: relative;
+    font-size: calc(var(--vscode-font-size) * 0.9);
+}
+
+.tab:hover {
+    background-color: var(--vscode-tab-hoverBackground);
+    color: var(--vscode-tab-hoverForeground);
+}
+
+.tab.active {
+    background-color: var(--vscode-tab-activeBackground);
+    color: var(--vscode-tab-activeForeground);
+    border-bottom: 2px solid var(--vscode-tab-activeBorder, var(--vscode-focusBorder));
+}
+
+.tab-title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-right: 4px;
+}
+
+.tab-close {
+    background: none;
+    border: none;
+    color: var(--vscode-tab-inactiveForeground);
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 2px;
+    font-size: 14px;
+    line-height: 1;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.tab-close:hover {
+    background-color: var(--vscode-toolbar-hoverBackground);
+    color: var(--vscode-tab-activeForeground);
+}
+
+.tab.active .tab-close {
+    color: var(--vscode-tab-activeForeground);
+}
+
+.new-tab-button {
+    background: none;
+    border: none;
+    color: var(--vscode-tab-inactiveForeground);
+    cursor: pointer;
+    padding: 6px 8px;
+    font-size: 16px;
+    line-height: 1;
+    border-radius: 2px;
+    margin: 2px 4px;
+}
+
+.new-tab-button:hover {
+    background-color: var(--vscode-toolbar-hoverBackground);
+    color: var(--vscode-tab-activeForeground);
+}
+
+.tab-content-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.tab-content {
+    display: none;
+    flex: 1;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.tab-content.active {
+    display: flex;
+}
+
+.no-tabs-message {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+}
+
+/* Controls area styling - now within tab content */
 .controls {
     padding: 6px 12px;
     border-bottom: 1px solid var(--vscode-editorWidget-border, var(--vscode-contrastBorder, transparent));
@@ -108,8 +228,8 @@ body {
 
 /* --- AG Grid Styling --- */
 
-/* Container for the grid */
-#results-grid {
+/* Container for the grid - now within tab content */
+.results-grid {
     width: 100%;
     flex-grow: 1; /* Allow grid to take remaining vertical space */
     /* height: 100%; AG Grid domLayout: 'normal' manages height with its own container */
@@ -321,7 +441,7 @@ body.vscode-high-contrast .ag-theme-quartz .ag-header-cell {
 }
 
 /* Ensure the grid takes up the available space if its container is flex growing */
-#results-grid.ag-theme-quartz {
+.results-grid.ag-theme-quartz {
     height: 100%;
     width: 100%;
 } 

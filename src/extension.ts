@@ -63,7 +63,13 @@ export function activate(context: vscode.ExtensionContext) {
         }
         // --- End stripping ---
 
-        resultsViewProvider.showLoading();
+        // Generate a unique tab ID for this query
+        const tabId = `tab-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        const queryPreview = sql.length > 30 ? sql.substring(0, 30) + '...' : sql;
+        
+        // Create a new tab with the specific tabId and show loading
+        resultsViewProvider.createTabWithId(tabId, sql, queryPreview);
+        resultsViewProvider.showLoadingForTab(tabId, sql, queryPreview);
 
         const config = vscode.workspace.getConfiguration('presto');
         const host = config.get<string>('host', 'localhost');
@@ -220,8 +226,8 @@ export function activate(context: vscode.ExtensionContext) {
                     wasTruncated = true;
                 }
                 
-                // Send display results to view provider
-                 resultsViewProvider.showResults({
+                // Send display results to view provider for the specific tab
+                 resultsViewProvider.showResultsForTab(tabId, {
                     columns,
                     rows: results.slice(0, maxRows),
                     query: sql,
@@ -241,7 +247,7 @@ export function activate(context: vscode.ExtensionContext) {
             console.error("Trino Query Error:", error);
             const errorMessage = error.message || 'Unknown error during query execution.';
             vscode.window.showErrorMessage(`Trino Query Failed: ${errorMessage}`);
-            resultsViewProvider?.showError(errorMessage, error.stack);
+            resultsViewProvider?.showErrorForTab(tabId, errorMessage, error.stack, sql, queryPreview);
         }
     });
 
