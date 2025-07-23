@@ -1,0 +1,17 @@
+.vscode/**
+.vscode-test/**
+src/**
+.gitignore
+tsconfig.json
+vsc-extension-quickstart.md
+**/node_modules/**
+**/*.map
+**/*.ts
+.eslintrc.json
+jest.config.js
+coverage/**
+.nyc_output/**
+**/*.test.*
+**/*.spec.*
+src/test/**
+out/test/** 

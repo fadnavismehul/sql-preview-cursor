@@ -1,4 +1,4 @@
-# Presto Query Runner for VS Code
+# SQL Preview for VS Code
 
 A Visual Studio Code extension for connecting to Presto/Trino databases, running SQL queries, and visualizing results directly within your editor.
 
@@ -11,6 +11,7 @@ A Visual Studio Code extension for connecting to Presto/Trino databases, running
 - **Export Capability**: Export results to CSV (coming soon)
 - **Syntax Highlighting**: Proper SQL syntax highlighting
 - **Connection Management**: Simple configuration via VS Code settings
+- **Secure Password Storage**: Passwords stored securely using VS Code's encrypted SecretStorage API with convenient Settings UI
 
 ## Technology Stack
 
@@ -27,16 +28,32 @@ Add the following configuration to your VS Code `settings.json`:
 
 ```json
 {
-  "presto.host": "your-presto-host.example.com",
-  "presto.port": 443,
-  "presto.catalog": "hive",
-  "presto.schema": "default",
-  "presto.user": "your-username",
-  "presto.password": "your-password", // Optional
-  "presto.basicAuth": false, // Set to true if using HTTP Basic Authentication
-  "presto.maxRowsToDisplay": 1000 // Limit the number of rows to display
+  "sqlPreview.host": "your-presto-host.example.com",
+  "sqlPreview.port": 443,
+  "sqlPreview.catalog": "hive",
+  "sqlPreview.schema": "default",
+  "sqlPreview.user": "your-username",
+  "sqlPreview.ssl": true, // Enable SSL
+  "sqlPreview.sslVerify": true, // Verify SSL certificate
+  "sqlPreview.maxRowsToDisplay": 500 // Limit the number of rows to display
 }
 ```
+
+### Secure Password Management
+
+For security reasons, passwords are **never stored as plaintext**. You have multiple ways to manage your password securely:
+
+#### **Option 1: Settings UI (Recommended)**
+1. Open VS Code Settings (`Ctrl+,` / `Cmd+,`)
+2. Search for "SQL Preview"
+3. Find the "Password" field and click **"Set Password"** button
+4. Enter your password in the secure dialog
+
+#### **Option 2: Command Palette**
+1. **Set Password**: Open Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and run `SQL Preview: Set Database Password`
+2. **Clear Password**: Run `SQL Preview: Clear Stored Password` to remove the stored password
+
+The password field in settings will show `[Password Set]` when a password is stored securely. Passwords are encrypted using VS Code's built-in SecretStorage API and the operating system's credential manager.
 
 ## Usage
 
@@ -46,11 +63,25 @@ Add the following configuration to your VS Code `settings.json`:
 2. Write your SQL query
 3. Click the "Run Query" Code Lens above your query, or:
 4. Open the Command Palette (`Ctrl+Shift+P` or `Cmd+Shift+P` on macOS)
-5. Select "Presto: Run Query"
+5. Select "SQL Preview: Run Query Under Cursor"
+
+### Managing Database Password
+
+For secure authentication, you can set your password in two convenient ways:
+
+#### **Via Settings (Easiest)**
+1. Open Settings → Search "SQL Preview" → Click "Set Password" button next to the Password field
+2. The field will show `[Password Set]` when configured
+
+#### **Via Command Palette**
+1. **Set Password**: `SQL Preview: Set Database Password` - Enter your password in a secure input field
+2. **Clear Password**: `SQL Preview: Clear Stored Password` - Remove the stored password
+
+The password is stored securely using OS-level encryption and never appears in your settings files.
 
 ### Viewing Results
 
-Results will appear in the "Presto Results" panel in the Activity Bar. The results view provides:
+Results will appear in the "SQL Preview" panel in the Activity Bar. The results view provides:
 
 - Sortable columns (click column headers)
 - Filterable columns (using floating filters below column headers)
@@ -60,7 +91,7 @@ Results will appear in the "Presto Results" panel in the Activity Bar. The resul
 ## Project Structure
 
 ```
-presto-runner/
+sql-preview/
 ├── src/
 │   ├── extension.ts          # Main extension entry point
 │   ├── resultsViewProvider.ts # Results view implementation

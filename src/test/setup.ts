@@ -29,6 +29,11 @@ const mockContext = {
         get: jest.fn(),
         update: jest.fn()
     },
+    secrets: {
+        get: jest.fn(),
+        store: jest.fn(),
+        delete: jest.fn()
+    },
     extensionPath: '/mock/extension/path',
     asAbsolutePath: (relativePath: string) => `/mock/extension/path/${relativePath}`
 };

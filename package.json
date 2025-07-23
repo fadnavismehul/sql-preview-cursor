@@ -4,10 +4,30 @@
   "description": "Run SQL queries directly from VS Code with tabbed results",
   "version": "0.0.1",
   "publisher": "mehulfadnavis",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mehulfadnavis/sql-preview"
+  },
+  "homepage": "https://github.com/mehulfadnavis/sql-preview#readme",
+  "bugs": {
+    "url": "https://github.com/mehulfadnavis/sql-preview/issues"
+  },
+  "keywords": [
+    "sql",
+    "presto",
+    "trino",
+    "database",
+    "query",
+    "data",
+    "analytics",
+    "results",
+    "viewer"
+  ],
   "engines": {
     "vscode": "^1.80.0"
   },
   "categories": [
+    "Data Science",
     "Other"
   ],
 
@@ -22,6 +42,19 @@
       {
         "command": "sql.runCursorQuery",
         "title": "SQL Preview: Run Query Under Cursor"
+      },
+      {
+        "command": "sql.setPassword",
+        "title": "SQL Preview: Set Database Password"
+      },
+      {
+        "command": "sql.clearPassword",
+        "title": "SQL Preview: Clear Stored Password"
+      },
+      {
+        "command": "sql.setPasswordFromSettings",
+        "title": "Set Password",
+        "icon": "$(key)"
       }
     ],
     "viewsContainers": {
@@ -43,6 +76,14 @@
         }
       ]
     },
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "sql.setPasswordFromSettings",
+          "when": "false"
+        }
+      ]
+    },
     "configuration": {
       "title": "SQL Preview",
       "properties": {
@@ -53,7 +94,7 @@
         },
         "sqlPreview.port": {
           "type": "number",
-          "default": 8080,
+          "default": 443,
           "description": "Database server port."
         },
         "sqlPreview.user": {
@@ -74,8 +115,10 @@
         "sqlPreview.password": {
           "type": "string",
           "default": "",
-          "description": "Password for database connection (if using password auth). Leave empty if not needed.",
-          "markdownDescription": "Password for database connection (if using password auth). **Leave empty** if not needed or using other authentication methods."
+          "description": "Click 'Set Password' to securely store your database password. This field shows whether a password is stored.",
+          "markdownDescription": "**Secure Password Management**: Click the 'Set Password' button or use Command Palette → `SQL Preview: Set Database Password` to store your password securely. This field will show `[Password Set]` when configured.",
+          "editPresentation": "singlelineText",
+          "scope": "application"
         },
         "sqlPreview.ssl": {
           "type": "boolean",

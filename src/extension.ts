@@ -8,6 +8,9 @@ import * as https from 'https'; // Import https for custom agent
 
 let resultsViewProvider: ResultsViewProvider | undefined;
 
+// Secret storage key for database password
+const PASSWORD_SECRET_KEY = 'sqlPreview.database.password';
+
 // --- Module-level state for last query results --- 
 // Store the full first batch and pagination info for potential export
 interface LastQueryResult {
@@ -29,6 +32,38 @@ const createHttpsAgent = (sslVerify: boolean) => {
 };
 
 /**
+ * Securely retrieves the stored password from VS Code's secret storage
+ */
+async function getStoredPassword(context: vscode.ExtensionContext): Promise<string | undefined> {
+    return await context.secrets.get(PASSWORD_SECRET_KEY);
+}
+
+/**
+ * Securely stores the password in VS Code's secret storage
+ */
+async function setStoredPassword(context: vscode.ExtensionContext, password: string): Promise<void> {
+    await context.secrets.store(PASSWORD_SECRET_KEY, password);
+}
+
+/**
+ * Clears the stored password from VS Code's secret storage
+ */
+async function clearStoredPassword(context: vscode.ExtensionContext): Promise<void> {
+    await context.secrets.delete(PASSWORD_SECRET_KEY);
+}
+
+/**
+ * Updates the password status display in settings
+ */
+async function updatePasswordStatus(context: vscode.ExtensionContext): Promise<void> {
+    const config = vscode.workspace.getConfiguration('sqlPreview');
+    const hasPassword = await getStoredPassword(context) !== undefined;
+    
+    // Update the display value in settings
+    await config.update('password', hasPassword ? '[Password Set]' : '', vscode.ConfigurationTarget.Global);
+}
+
+/**
  * This method is called when your extension is activated.
  * Your extension is activated the very first time the command is executed
  * or when a file with the language ID 'sql' is opened.
@@ -47,6 +82,81 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.languages.registerCodeLensProvider({ language: 'sql' }, new PrestoCodeLensProvider())
     );
+
+    // Update password status on activation
+    updatePasswordStatus(context);
+
+    // Register the command to set database password securely
+    const setPasswordCommand = vscode.commands.registerCommand('sql.setPassword', async () => {
+        const password = await vscode.window.showInputBox({
+            prompt: 'Enter database password',
+            password: true, // This hides the input
+            placeHolder: 'Database password'
+        });
+
+        if (password !== undefined) {
+            if (password.trim() === '') {
+                await clearStoredPassword(context);
+                await updatePasswordStatus(context);
+                vscode.window.showInformationMessage('Database password cleared.');
+            } else {
+                await setStoredPassword(context, password);
+                await updatePasswordStatus(context);
+                vscode.window.showInformationMessage('Database password stored securely.');
+            }
+        }
+    });
+
+    // Register the command for setting password from settings page
+    const setPasswordFromSettingsCommand = vscode.commands.registerCommand('sql.setPasswordFromSettings', async () => {
+        const password = await vscode.window.showInputBox({
+            prompt: 'Enter database password (securely stored using VS Code SecretStorage)',
+            password: true,
+            placeHolder: 'Database password',
+            title: 'SQL Preview - Set Database Password'
+        });
+
+        if (password !== undefined) {
+            if (password.trim() === '') {
+                await clearStoredPassword(context);
+                await updatePasswordStatus(context);
+                vscode.window.showInformationMessage('Database password cleared.');
+            } else {
+                await setStoredPassword(context, password);
+                await updatePasswordStatus(context);
+                vscode.window.showInformationMessage('Database password stored securely.');
+            }
+        }
+    });
+
+    // Register the command to clear stored password
+    const clearPasswordCommand = vscode.commands.registerCommand('sql.clearPassword', async () => {
+        await clearStoredPassword(context);
+        await updatePasswordStatus(context);
+        vscode.window.showInformationMessage('Database password cleared.');
+    });
+
+    // Listen for configuration changes to prevent direct password editing
+    const configListener = vscode.workspace.onDidChangeConfiguration(async (e) => {
+        if (e.affectsConfiguration('sqlPreview.password')) {
+            // If someone tries to directly edit the password field, reset it and show instruction
+            const config = vscode.workspace.getConfiguration('sqlPreview');
+            const passwordValue = config.get<string>('password', '');
+            
+            if (passwordValue && passwordValue !== '[Password Set]') {
+                // Reset the field and show message
+                await updatePasswordStatus(context);
+                vscode.window.showWarningMessage(
+                    'Please use "Set Password" command for secure password storage. Direct editing is not allowed.',
+                    'Set Password'
+                ).then(selection => {
+                    if (selection === 'Set Password') {
+                        vscode.commands.executeCommand('sql.setPasswordFromSettings');
+                    }
+                });
+            }
+        }
+    });
 
     // Register the command to run the query under the cursor
     const runQueryCommand = vscode.commands.registerCommand('sql.runCursorQuery', async (sqlFromCodeLens: string) => {
@@ -77,10 +187,12 @@ export function activate(context: vscode.ExtensionContext) {
         const user = config.get<string>('user', 'user');
         const catalog = config.get<string>('catalog') || undefined;
         const schema = config.get<string>('schema') || undefined;
-        const password = config.get<string>('password') || undefined;
         const ssl = config.get<boolean>('ssl', false);
         const sslVerify = config.get<boolean>('sslVerify', true);
         const maxRows = config.get<number>('maxRowsToDisplay', 500);
+
+        // Get password securely from secret storage
+        const password = await getStoredPassword(context);
 
         // --- Setup Authentication --- 
         let basicAuthHeader: string | undefined;
@@ -251,7 +363,13 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
-    context.subscriptions.push(runQueryCommand);
+    context.subscriptions.push(
+        runQueryCommand, 
+        setPasswordCommand, 
+        setPasswordFromSettingsCommand,
+        clearPasswordCommand,
+        configListener
+    );
 }
 
 /**

@@ -4,6 +4,9 @@
 
 ### Added
 - Initial VS Code extension setup for Presto/Trino database connections
+- **Secure password storage** using VS Code's SecretStorage API
+- Password management commands for secure credential handling
+- **Settings UI integration** for password management with "Set Password" button
 - Command palette integration with `Presto: Run Query` command
 - Code lens provider for executing SQL queries directly from editor
 - Results view panel with Tabulator integration for data visualization
@@ -24,6 +27,7 @@
   - Live theme updates when user changes VS Code theme
 
 ### Changed
+- **SECURITY**: Removed plaintext password storage from settings - now uses secure VS Code SecretStorage
 - Replaced Tabulator with AG Grid for the results view, providing enhanced features and a more modern grid experience.
 - Enabled floating filters by default in the AG Grid results view for easier column-specific filtering.
 - Updated results display to use Tabulator for better data visualization
