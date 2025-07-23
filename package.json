@@ -1,93 +1,93 @@
 {
-  "name": "presto-runner",
-  "displayName": "Presto Runner",
-  "description": "Run Presto/Trino queries directly from VS Code",
+  "name": "sql-preview",
+  "displayName": "SQL Preview",
+  "description": "Run SQL queries directly from VS Code with tabbed results",
   "version": "0.0.1",
-  "publisher": "mehul.fadnavis",
+  "publisher": "mehulfadnavis",
   "engines": {
     "vscode": "^1.80.0"
   },
   "categories": [
     "Other"
   ],
-  "icon": "media/icon.png",
-  "activationEvents": [
-    "onLanguage:sql",
-    "onCommand:presto.runCursorQuery",
-    "onView:prestoResultsView"
+
+      "activationEvents": [
+      "onLanguage:sql",
+      "onCommand:sql.runCursorQuery",
+      "onView:sqlResultsView"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "presto.runCursorQuery",
-        "title": "Presto: Run Query Under Cursor"
+        "command": "sql.runCursorQuery",
+        "title": "SQL Preview: Run Query Under Cursor"
       }
     ],
     "viewsContainers": {
       "panel": [
         {
-          "id": "prestoResultsContainer",
-          "title": "Presto",
+          "id": "sqlResultsContainer",
+          "title": "SQL Preview",
           "icon": "media/table.svg"
         }
       ]
     },
     "views": {
-      "prestoResultsContainer": [
+      "sqlResultsContainer": [
         {
-          "id": "prestoResultsView",
+          "id": "sqlResultsView",
           "name": "Results",
           "type": "webview",
-          "contextualTitle": "Presto Results"
+          "contextualTitle": "SQL Preview Results"
         }
       ]
     },
     "configuration": {
-      "title": "Presto Runner",
+      "title": "SQL Preview",
       "properties": {
-        "presto.host": {
+        "sqlPreview.host": {
           "type": "string",
           "default": "localhost",
-          "description": "Trino/Presto coordinator host."
+          "description": "Database server host."
         },
-        "presto.port": {
+        "sqlPreview.port": {
           "type": "number",
           "default": 8080,
-          "description": "Trino/Presto coordinator port."
+          "description": "Database server port."
         },
-        "presto.user": {
+        "sqlPreview.user": {
           "type": "string",
           "default": "user",
-          "description": "Username for Trino/Presto connection."
+          "description": "Username for database connection."
         },
-        "presto.catalog": {
+        "sqlPreview.catalog": {
           "type": "string",
           "default": "",
-          "description": "Default Trino/Presto catalog."
+          "description": "Default database catalog."
         },
-        "presto.schema": {
+        "sqlPreview.schema": {
           "type": "string",
           "default": "",
-          "description": "Default Trino/Presto schema."
+          "description": "Default database schema."
         },
-        "presto.password": {
+        "sqlPreview.password": {
           "type": "string",
           "default": "",
-          "description": "Password for Trino/Presto connection (if using password auth). Leave empty if not needed.",
-          "markdownDescription": "Password for Trino/Presto connection (if using password auth). **Leave empty** if not needed or using other authentication methods."
+          "description": "Password for database connection (if using password auth). Leave empty if not needed.",
+          "markdownDescription": "Password for database connection (if using password auth). **Leave empty** if not needed or using other authentication methods."
         },
-        "presto.ssl": {
+        "sqlPreview.ssl": {
           "type": "boolean",
           "default": false,
           "description": "Enable SSL/TLS for the connection."
         },
-        "presto.sslVerify": {
+        "sqlPreview.sslVerify": {
           "type": "boolean",
           "default": true,
           "description": "Verify the server's SSL certificate. Set to false for self-signed certificates (less secure)."
         },
-        "presto.maxRowsToDisplay": {
+        "sqlPreview.maxRowsToDisplay": {
           "type": "number",
           "default": 500,
           "description": "Maximum number of rows to display in the results grid. Full results can be exported.",

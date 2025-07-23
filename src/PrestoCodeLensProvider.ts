@@ -61,7 +61,7 @@ export class PrestoCodeLensProvider implements vscode.CodeLensProvider {
 
             const command: vscode.Command = {
                 title: "▶️ Run Query",
-                command: 'presto.runCursorQuery',
+                                    command: 'sql.runCursorQuery',
                 arguments: [trimmedQuery] // Pass the identified SQL query text
             };
 

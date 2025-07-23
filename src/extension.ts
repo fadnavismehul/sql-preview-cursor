@@ -49,7 +49,7 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     // Register the command to run the query under the cursor
-    const runQueryCommand = vscode.commands.registerCommand('presto.runCursorQuery', async (sqlFromCodeLens: string) => {
+    const runQueryCommand = vscode.commands.registerCommand('sql.runCursorQuery', async (sqlFromCodeLens: string) => {
         if (!resultsViewProvider) {
             vscode.window.showErrorMessage('Results view is not available.');
             return;
@@ -71,7 +71,7 @@ export function activate(context: vscode.ExtensionContext) {
         resultsViewProvider.createTabWithId(tabId, sql, queryPreview);
         resultsViewProvider.showLoadingForTab(tabId, sql, queryPreview);
 
-        const config = vscode.workspace.getConfiguration('presto');
+        const config = vscode.workspace.getConfiguration('sqlPreview');
         const host = config.get<string>('host', 'localhost');
         const port = config.get<number>('port', 8080);
         const user = config.get<string>('user', 'user');

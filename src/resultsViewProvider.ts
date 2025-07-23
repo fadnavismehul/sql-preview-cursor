@@ -9,7 +9,7 @@ import * as vscode from 'vscode';
  */
 export class ResultsViewProvider implements vscode.WebviewViewProvider {
 
-    public static readonly viewType = 'prestoResultsView';
+    public static readonly viewType = 'sqlResultsView';
 
     private _view?: vscode.WebviewView;
 
@@ -230,7 +230,7 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
                 <!-- Load local CSS -->
                 <link href="${stylesUri}" rel="stylesheet">
                 
-                <title>Presto Results</title>
+                <title>SQL Preview Results</title>
             </head>
             <body>
                 <!-- Tab Container -->

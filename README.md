@@ -28,7 +28,7 @@ Add the following configuration to your VS Code `settings.json`:
 ```json
 {
   "presto.host": "your-presto-host.example.com",
-  "presto.port": 8080,
+  "presto.port": 443,
   "presto.catalog": "hive",
   "presto.schema": "default",
   "presto.user": "your-username",
