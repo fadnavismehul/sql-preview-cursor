@@ -2,15 +2,16 @@
   "name": "sql-preview",
   "displayName": "SQL Preview",
   "description": "Run SQL queries directly from VS Code with tabbed results",
-  "version": "0.0.1",
-  "publisher": "mehulfadnavis",
+  "version": "0.0.3",
+  "publisher": "mehul",
+  "icon": "media/icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/mehulfadnavis/sql-preview"
+    "url": "https://github.com/fadnavismehul/sql-preview-cursor"
   },
-  "homepage": "https://github.com/mehulfadnavis/sql-preview#readme",
+  "homepage": "https://github.com/fadnavismehul/sql-preview-cursor#readme",
   "bugs": {
-    "url": "https://github.com/mehulfadnavis/sql-preview/issues"
+    "url": "https://github.com/fadnavismehul/sql-preview-cursor/issues"
   },
   "keywords": [
     "sql",
@@ -34,6 +35,9 @@
       "activationEvents": [
       "onLanguage:sql",
       "onCommand:sql.runCursorQuery",
+      "onCommand:sql.setPassword",
+      "onCommand:sql.clearPassword",
+      "onCommand:sql.setPasswordFromSettings",
       "onView:sqlResultsView"
   ],
   "main": "./out/extension.js",
@@ -140,7 +144,7 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
+    "vscode:prepublish": "npm run build",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "package": "vsce package",
