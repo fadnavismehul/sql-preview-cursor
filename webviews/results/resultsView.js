@@ -712,10 +712,20 @@ if (typeof agGrid === 'undefined') {
                 }
                 if (elements) {
                     if (elements.errorContainer) {
-                        elements.errorContainer.textContent = `Query Error: ${message.error.message}`;
+                        // Build a more detailed error message
+                        let errorText = `Query Error: ${message.error.message}`;
+                        
                         if (message.error.details) {
-                             console.error("Error Details:", message.error.details);
+                            errorText += `\n\nDetails:\n${message.error.details}`;
+                            console.error("Error Details:", message.error.details);
                         }
+                        
+                        // Add the SQL query that failed for context
+                        if (message.query) {
+                            errorText += `\n\nFailed Query:\n${message.query}`;
+                        }
+                        
+                        elements.errorContainer.textContent = errorText;
                         elements.errorContainer.style.display = 'block';
                     }
                     if (elements.statusMessageElement) elements.statusMessageElement.textContent = 'Error';
