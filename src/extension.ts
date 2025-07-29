@@ -240,9 +240,40 @@ export function activate(context: vscode.ExtensionContext) {
             rawResultObject = firstIteration.value;
             const firstDone = firstIteration.done;
             console.log(`First iteration result: done = ${firstDone}`);
+            
+            // Log the raw response for debugging
+            console.log("Raw response structure:", {
+                hasValue: !!rawResultObject,
+                hasError: !!(rawResultObject?.error),
+                hasStats: !!(rawResultObject?.stats),
+                state: rawResultObject?.stats?.state,
+                hasColumns: !!(rawResultObject?.columns),
+                hasData: !!(rawResultObject?.data),
+                queryId: rawResultObject?.id
+            });
 
             if (rawResultObject) {
                 console.log("Raw FIRST queryResult value received."); // No need to log full object now
+                
+                // Check for error conditions in the response
+                if (rawResultObject.error) {
+                    // Handle Presto/Trino error response
+                    const errorMessage = rawResultObject.error.message || rawResultObject.error.errorName || 'Unknown query error';
+                    const errorDetails = rawResultObject.error.stack || rawResultObject.error.errorCode || undefined;
+                    console.error("Presto Query Error from response:", rawResultObject.error);
+                    resultsViewProvider?.showErrorForTab(tabId, errorMessage, errorDetails, sql, queryPreview);
+                    return;
+                }
+                
+                // Check for failed query state
+                if (rawResultObject.stats && rawResultObject.stats.state === 'FAILED') {
+                    const errorMessage = rawResultObject.error?.message || 'Query execution failed';
+                    const errorDetails = rawResultObject.error?.stack || rawResultObject.stats.state;
+                    console.error("Presto Query Failed:", rawResultObject);
+                    resultsViewProvider?.showErrorForTab(tabId, errorMessage, errorDetails, sql, queryPreview);
+                    return;
+                }
+                
                 if (rawResultObject.columns && Array.isArray(rawResultObject.columns)) {
                     columns = rawResultObject.columns.map((col: { name: string; type: string }) => ({ 
                         name: col.name, 
@@ -279,6 +310,16 @@ export function activate(context: vscode.ExtensionContext) {
                         const response = await axios.get(currentPageUri, config);
                         
                         const pageData: any = response.data;
+                        
+                        // Check for error conditions in pagination response
+                        if (pageData?.error) {
+                            const errorMessage = pageData.error.message || pageData.error.errorName || 'Error in paginated results';
+                            const errorDetails = pageData.error.stack || pageData.error.errorCode || undefined;
+                            console.error("Presto Query Error in pagination:", pageData.error);
+                            resultsViewProvider?.showErrorForTab(tabId, errorMessage, errorDetails, sql, queryPreview);
+                            return;
+                        }
+                        
                         if (pageData?.data && Array.isArray(pageData.data)) {
                             results.push(...pageData.data);
                             totalRowsFetched += pageData.data.length;
@@ -350,9 +391,16 @@ export function activate(context: vscode.ExtensionContext) {
                     nextUri: currentPageUri
                 });
             } else {
-                 // No columns found...
+                 // No columns found - this could be a DDL/DML statement or an error condition
                  console.warn("Could not determine columns or no columns returned...");
-                 resultsViewProvider.showStatusMessage('Query finished successfully (no tabular data).');
+                 
+                 // If we got a queryId, it likely executed successfully (DDL/DML)
+                 if (queryIdFromResponse) {
+                     resultsViewProvider.showStatusMessage(`Query executed successfully (Query ID: ${queryIdFromResponse}). No data returned - this is normal for DDL/DML operations.`);
+                 } else {
+                     // No queryId might indicate an issue - provide more guidance
+                     resultsViewProvider.showStatusMessage('Query completed but returned no data. Check for syntax errors or verify the query produces results.');
+                 }
             }
             
         } catch (error: any) {
