@@ -24,6 +24,56 @@ if (typeof agGrid === 'undefined') {
     let activeTabId = null;
     let nextTabId = 1;
 
+    // --- Error Suggestion Functions ---
+    function getErrorSuggestions(errorMessage) {
+        const suggestions = [];
+        const lowerError = errorMessage.toLowerCase();
+        
+        if (lowerError.includes('syntax error') || lowerError.includes('parse error')) {
+            suggestions.push('Check your SQL syntax for missing commas, parentheses, or semicolons');
+            suggestions.push('Verify that all SQL keywords are spelled correctly');
+            suggestions.push('Ensure proper case sensitivity for table and column names');
+        }
+        
+        if (lowerError.includes('table') && (lowerError.includes('not found') || lowerError.includes('does not exist'))) {
+            suggestions.push('Verify the table name is spelled correctly');
+            suggestions.push('Check if the table exists in the specified catalog and schema');
+            suggestions.push('Ensure you have the correct permissions to access this table');
+        }
+        
+        if (lowerError.includes('column') && (lowerError.includes('not found') || lowerError.includes('does not exist'))) {
+            suggestions.push('Check if the column name is spelled correctly');
+            suggestions.push('Verify the column exists in the specified table');
+            suggestions.push('Use DESCRIBE table_name to see available columns');
+        }
+        
+        if (lowerError.includes('connection') || lowerError.includes('refused') || lowerError.includes('timeout')) {
+            suggestions.push('Check if the database server is running');
+            suggestions.push('Verify the host and port settings in VS Code settings');
+            suggestions.push('Ensure network connectivity to the database server');
+            suggestions.push('Check if authentication credentials are correct');
+        }
+        
+        if (lowerError.includes('permission') || lowerError.includes('access denied') || lowerError.includes('unauthorized')) {
+            suggestions.push('Verify your database username and password');
+            suggestions.push('Check if you have the necessary permissions for this operation');
+            suggestions.push('Contact your database administrator for access rights');
+        }
+        
+        if (lowerError.includes('ambiguous')) {
+            suggestions.push('Use table aliases to disambiguate column names');
+            suggestions.push('Fully qualify column names with table names');
+        }
+        
+        if (suggestions.length === 0) {
+            suggestions.push('Review the error message for specific details');
+            suggestions.push('Check the SQL syntax reference for your database');
+            suggestions.push('Try breaking down the query into smaller parts to isolate the issue');
+        }
+        
+        return suggestions;
+    }
+
     // --- State Persistence Functions ---
     function saveState() {
         const state = {
@@ -144,7 +194,24 @@ if (typeof agGrid === 'undefined') {
                     <button class="export-button" style="display: none;" title="Export full results to CSV">Export CSV</button> 
                 </div>
             </div>
-            <div class="error-container error-message" style="display: none;"></div>
+            <div class="error-container error-message" style="display: none;">
+                <div class="error-header">
+                    <span class="error-icon">⚠️</span>
+                    <span class="error-title">SQL Query Error</span>
+                </div>
+                <div class="error-message-content"></div>
+                <div class="error-suggestions" style="display: none;">
+                    <div class="error-suggestions-title">💡 Suggestions:</div>
+                    <div class="error-suggestions-content"></div>
+                </div>
+                <div class="error-details-toggle" style="display: none;">
+                    <button class="toggle-details-btn">📋 Show Details</button>
+                </div>
+                <div class="error-details" style="display: none;">
+                    <div class="error-details-title">Technical Details:</div>
+                    <pre class="error-details-content"></pre>
+                </div>
+            </div>
             <div class="loading-indicator loading" style="display: none;">
                 <div class="spinner"></div> 
                 <span>Loading...</span>
@@ -588,7 +655,17 @@ if (typeof agGrid === 'undefined') {
             if (elements.loadingIndicator) elements.loadingIndicator.style.display = 'none';
             
             if (message.type !== 'showLoading' && elements.errorContainer) {
-                elements.errorContainer.textContent = '';
+                // Clear enhanced error container
+                const errorMessageContent = elements.errorContainer.querySelector('.error-message-content');
+                const errorSuggestions = elements.errorContainer.querySelector('.error-suggestions');
+                const errorDetailsToggle = elements.errorContainer.querySelector('.error-details-toggle');
+                const errorDetails = elements.errorContainer.querySelector('.error-details');
+                
+                if (errorMessageContent) errorMessageContent.textContent = '';
+                if (errorSuggestions) errorSuggestions.style.display = 'none';
+                if (errorDetailsToggle) errorDetailsToggle.style.display = 'none';
+                if (errorDetails) errorDetails.style.display = 'none';
+                
                 elements.errorContainer.style.display = 'none';
             }
             if (message.type !== 'showLoading' && elements.statusMessageElement) {
@@ -683,7 +760,11 @@ if (typeof agGrid === 'undefined') {
                     console.error("Error initializing grid:", e);
                     if (currentTab.gridApi) currentTab.gridApi.hideOverlay();
                     if (elements.errorContainer) {
-                        elements.errorContainer.textContent = `Error displaying results: ${e.message}`;
+                        // Update error message content using enhanced structure
+                        const errorMessageContent = elements.errorContainer.querySelector('.error-message-content');
+                        if (errorMessageContent) {
+                            errorMessageContent.textContent = `Error displaying results: ${e.message}`;
+                        }
                         elements.errorContainer.style.display = 'block';
                     }
                     if (elements.statusMessageElement) elements.statusMessageElement.textContent = 'Error';
@@ -712,10 +793,45 @@ if (typeof agGrid === 'undefined') {
                 }
                 if (elements) {
                     if (elements.errorContainer) {
-                        elements.errorContainer.textContent = `Query Error: ${message.error.message}`;
-                        if (message.error.details) {
-                             console.error("Error Details:", message.error.details);
+                        // Update error message content
+                        const errorMessageContent = elements.errorContainer.querySelector('.error-message-content');
+                        if (errorMessageContent) {
+                            errorMessageContent.textContent = message.error.message;
                         }
+                        
+                        // Add suggestions
+                        const suggestions = getErrorSuggestions(message.error.message);
+                        const errorSuggestions = elements.errorContainer.querySelector('.error-suggestions');
+                        const errorSuggestionsContent = elements.errorContainer.querySelector('.error-suggestions-content');
+                        if (errorSuggestions && errorSuggestionsContent && suggestions.length > 0) {
+                            errorSuggestionsContent.innerHTML = suggestions.map(s => `<div class="suggestion-item">• ${s}</div>`).join('');
+                            errorSuggestions.style.display = 'block';
+                        }
+                        
+                        // Add error details if available
+                        if (message.error.details) {
+                            const errorDetailsToggle = elements.errorContainer.querySelector('.error-details-toggle');
+                            const errorDetails = elements.errorContainer.querySelector('.error-details');
+                            const errorDetailsContent = elements.errorContainer.querySelector('.error-details-content');
+                            const toggleButton = elements.errorContainer.querySelector('.toggle-details-btn');
+                            
+                            if (errorDetailsToggle && errorDetails && errorDetailsContent && toggleButton) {
+                                errorDetailsContent.textContent = message.error.details;
+                                errorDetailsToggle.style.display = 'block';
+                                
+                                // Add toggle functionality
+                                toggleButton.onclick = () => {
+                                    if (errorDetails.style.display === 'none' || !errorDetails.style.display) {
+                                        errorDetails.style.display = 'block';
+                                        toggleButton.textContent = '📋 Hide Details';
+                                    } else {
+                                        errorDetails.style.display = 'none';
+                                        toggleButton.textContent = '📋 Show Details';
+                                    }
+                                };
+                            }
+                        }
+                        
                         elements.errorContainer.style.display = 'block';
                     }
                     if (elements.statusMessageElement) elements.statusMessageElement.textContent = 'Error';
