@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 // Use NAMED import for Trino and BasicAuth
-import { Trino, BasicAuth } from 'trino-client'; 
+import { Trino, BasicAuth } from 'trino-client';
 import { PrestoCodeLensProvider } from './PrestoCodeLensProvider'; // Corrected filename casing
 import { ResultsViewProvider } from './resultsViewProvider';
 import axios from 'axios'; // Import axios
@@ -11,56 +11,82 @@ let resultsViewProvider: ResultsViewProvider | undefined;
 // Secret storage key for database password
 const PASSWORD_SECRET_KEY = 'sqlPreview.database.password';
 
-// --- Module-level state for last query results --- 
-// Store the full first batch and pagination info for potential export
-interface LastQueryResult {
-    columns: { name: string; type: string }[];
-    rows: any[][];
-    query: string;
-    nextUri?: string; // URI for the next page, if any
-    infoUri?: string; // Info URI for the query
-    id?: string;      // Query ID
+// Type definitions for Trino/Presto responses
+interface TrinoQueryResponse {
+  error?: {
+    message?: string;
+    errorName?: string;
+    stack?: string;
+    errorCode?: string;
+  };
+  stats?: {
+    state?: string;
+  };
+  columns?: Array<{ name: string; type: string }>;
+  data?: unknown[][];
+  id?: string;
+  nextUri?: string;
+  infoUri?: string;
 }
-let lastSuccessfulQueryResult: LastQueryResult | null = null;
-// --- End state --- 
+
+// --- Module-level state for last query results ---
+// TODO: Store the full first batch and pagination info for potential export
+// interface LastQueryResult {
+//     columns: { name: string; type: string }[];
+//     rows: any[][];
+//     query: string;
+//     nextUri?: string; // URI for the next page, if any
+//     infoUri?: string; // Info URI for the query
+//     id?: string;      // Query ID
+// }
+// TODO: Implement result caching for export functionality
+// let lastSuccessfulQueryResult: LastQueryResult | null = null;
+// --- End state ---
 
 // Create a reusable HTTPS agent for axios requests (important for custom SSL verification)
 const createHttpsAgent = (sslVerify: boolean) => {
-    return new https.Agent({
-        rejectUnauthorized: sslVerify
-    });
+  return new https.Agent({
+    rejectUnauthorized: sslVerify,
+  });
 };
 
 /**
  * Securely retrieves the stored password from VS Code's secret storage
  */
 async function getStoredPassword(context: vscode.ExtensionContext): Promise<string | undefined> {
-    return await context.secrets.get(PASSWORD_SECRET_KEY);
+  return await context.secrets.get(PASSWORD_SECRET_KEY);
 }
 
 /**
  * Securely stores the password in VS Code's secret storage
  */
-async function setStoredPassword(context: vscode.ExtensionContext, password: string): Promise<void> {
-    await context.secrets.store(PASSWORD_SECRET_KEY, password);
+async function setStoredPassword(
+  context: vscode.ExtensionContext,
+  password: string
+): Promise<void> {
+  await context.secrets.store(PASSWORD_SECRET_KEY, password);
 }
 
 /**
  * Clears the stored password from VS Code's secret storage
  */
 async function clearStoredPassword(context: vscode.ExtensionContext): Promise<void> {
-    await context.secrets.delete(PASSWORD_SECRET_KEY);
+  await context.secrets.delete(PASSWORD_SECRET_KEY);
 }
 
 /**
  * Updates the password status display in settings
  */
 async function updatePasswordStatus(context: vscode.ExtensionContext): Promise<void> {
-    const config = vscode.workspace.getConfiguration('sqlPreview');
-    const hasPassword = await getStoredPassword(context) !== undefined;
-    
-    // Update the display value in settings
-    await config.update('password', hasPassword ? '[Password Set]' : '', vscode.ConfigurationTarget.Global);
+  const config = vscode.workspace.getConfiguration('sqlPreview');
+  const hasPassword = (await getStoredPassword(context)) !== undefined;
+
+  // Update the display value in settings
+  await config.update(
+    'password',
+    hasPassword ? '[Password Set]' : '',
+    vscode.ConfigurationTarget.Global
+  );
 }
 
 /**
@@ -69,423 +95,513 @@ async function updatePasswordStatus(context: vscode.ExtensionContext): Promise<v
  * or when a file with the language ID 'sql' is opened.
  */
 export function activate(context: vscode.ExtensionContext) {
+  // console.log('Congratulations, your extension "presto-runner" is now active!');
 
-    console.log('Congratulations, your extension "presto-runner" is now active!');
+  // Register the Results Webview View Provider
+  resultsViewProvider = new ResultsViewProvider(context.extensionUri);
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(ResultsViewProvider.viewType, resultsViewProvider)
+  );
 
-    // Register the Results Webview View Provider
-    resultsViewProvider = new ResultsViewProvider(context.extensionUri);
-    context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider(ResultsViewProvider.viewType, resultsViewProvider)
-    );
+  // Register the CodeLens provider for SQL files
+  context.subscriptions.push(
+    vscode.languages.registerCodeLensProvider({ language: 'sql' }, new PrestoCodeLensProvider())
+  );
 
-    // Register the CodeLens provider for SQL files
-    context.subscriptions.push(
-        vscode.languages.registerCodeLensProvider({ language: 'sql' }, new PrestoCodeLensProvider())
-    );
+  // Update password status on activation
+  updatePasswordStatus(context);
 
-    // Update password status on activation
-    updatePasswordStatus(context);
-
-    // Register the command to set database password securely
-    const setPasswordCommand = vscode.commands.registerCommand('sql.setPassword', async () => {
-        const password = await vscode.window.showInputBox({
-            prompt: 'Enter database password',
-            password: true, // This hides the input
-            placeHolder: 'Database password'
-        });
-
-        if (password !== undefined) {
-            if (password.trim() === '') {
-                await clearStoredPassword(context);
-                await updatePasswordStatus(context);
-                vscode.window.showInformationMessage('Database password cleared.');
-            } else {
-                await setStoredPassword(context, password);
-                await updatePasswordStatus(context);
-                vscode.window.showInformationMessage('Database password stored securely.');
-            }
-        }
+  // Register the command to set database password securely
+  const setPasswordCommand = vscode.commands.registerCommand('sql.setPassword', async () => {
+    const password = await vscode.window.showInputBox({
+      prompt: 'Enter database password',
+      password: true, // This hides the input
+      placeHolder: 'Database password',
     });
 
-    // Register the command for setting password from settings page
-    const setPasswordFromSettingsCommand = vscode.commands.registerCommand('sql.setPasswordFromSettings', async () => {
-        const password = await vscode.window.showInputBox({
-            prompt: 'Enter database password (securely stored using VS Code SecretStorage)',
-            password: true,
-            placeHolder: 'Database password',
-            title: 'SQL Preview - Set Database Password'
-        });
-
-        if (password !== undefined) {
-            if (password.trim() === '') {
-                await clearStoredPassword(context);
-                await updatePasswordStatus(context);
-                vscode.window.showInformationMessage('Database password cleared.');
-            } else {
-                await setStoredPassword(context, password);
-                await updatePasswordStatus(context);
-                vscode.window.showInformationMessage('Database password stored securely.');
-            }
-        }
-    });
-
-    // Register the command to clear stored password
-    const clearPasswordCommand = vscode.commands.registerCommand('sql.clearPassword', async () => {
+    if (password !== undefined) {
+      if (password.trim() === '') {
         await clearStoredPassword(context);
         await updatePasswordStatus(context);
         vscode.window.showInformationMessage('Database password cleared.');
-    });
+      } else {
+        await setStoredPassword(context, password);
+        await updatePasswordStatus(context);
+        vscode.window.showInformationMessage('Database password stored securely.');
+      }
+    }
+  });
 
-    // Listen for configuration changes to prevent direct password editing
-    const configListener = vscode.workspace.onDidChangeConfiguration(async (e) => {
-        if (e.affectsConfiguration('sqlPreview.password')) {
-            // If someone tries to directly edit the password field, reset it and show instruction
-            const config = vscode.workspace.getConfiguration('sqlPreview');
-            const passwordValue = config.get<string>('password', '');
-            
-            if (passwordValue && passwordValue !== '[Password Set]') {
-                // Reset the field and show message
-                await updatePasswordStatus(context);
-                vscode.window.showWarningMessage(
-                    'Please use "Set Password" command for secure password storage. Direct editing is not allowed.',
-                    'Set Password'
-                ).then(selection => {
-                    if (selection === 'Set Password') {
-                        vscode.commands.executeCommand('sql.setPasswordFromSettings');
-                    }
-                });
-            }
-        }
-    });
+  // Register the command for setting password from settings page
+  const setPasswordFromSettingsCommand = vscode.commands.registerCommand(
+    'sql.setPasswordFromSettings',
+    async () => {
+      const password = await vscode.window.showInputBox({
+        prompt: 'Enter database password (securely stored using VS Code SecretStorage)',
+        password: true,
+        placeHolder: 'Database password',
+        title: 'SQL Preview - Set Database Password',
+      });
 
-    // Register the command to run the query under the cursor
-    const runQueryCommand = vscode.commands.registerCommand('sql.runCursorQuery', async (sqlFromCodeLens?: string) => {
-        if (!resultsViewProvider) {
-            vscode.window.showErrorMessage('Results view is not available.');
-            return;
-        }
-
-        let sql: string;
-
-        if (sqlFromCodeLens) {
-            // Called from CodeLens with SQL provided
-            sql = sqlFromCodeLens.trim().replace(/;$/, '').trim();
+      if (password !== undefined) {
+        if (password.trim() === '') {
+          await clearStoredPassword(context);
+          await updatePasswordStatus(context);
+          vscode.window.showInformationMessage('Database password cleared.');
         } else {
-            // Called from keyboard shortcut - need to get SQL from editor
-            const editor = vscode.window.activeTextEditor;
-            if (!editor) {
-                vscode.window.showErrorMessage('No active SQL editor found.');
+          await setStoredPassword(context, password);
+          await updatePasswordStatus(context);
+          vscode.window.showInformationMessage('Database password stored securely.');
+        }
+      }
+    }
+  );
+
+  // Register the command to clear stored password
+  const clearPasswordCommand = vscode.commands.registerCommand('sql.clearPassword', async () => {
+    await clearStoredPassword(context);
+    await updatePasswordStatus(context);
+    vscode.window.showInformationMessage('Database password cleared.');
+  });
+
+  // Listen for configuration changes to prevent direct password editing
+  const configListener = vscode.workspace.onDidChangeConfiguration(async e => {
+    if (e.affectsConfiguration('sqlPreview.password')) {
+      // If someone tries to directly edit the password field, reset it and show instruction
+      const config = vscode.workspace.getConfiguration('sqlPreview');
+      const passwordValue = config.get<string>('password', '');
+
+      if (passwordValue && passwordValue !== '[Password Set]') {
+        // Reset the field and show message
+        await updatePasswordStatus(context);
+        vscode.window
+          .showWarningMessage(
+            'Please use "Set Password" command for secure password storage. Direct editing is not allowed.',
+            'Set Password'
+          )
+          .then(selection => {
+            if (selection === 'Set Password') {
+              vscode.commands.executeCommand('sql.setPasswordFromSettings');
+            }
+          });
+      }
+    }
+  });
+
+  // Register the command to run the query under the cursor
+  const runQueryCommand = vscode.commands.registerCommand(
+    'sql.runCursorQuery',
+    async (sqlFromCodeLens?: string) => {
+      if (!resultsViewProvider) {
+        vscode.window.showErrorMessage('Results view is not available.');
+        return;
+      }
+
+      let sql: string;
+
+      if (sqlFromCodeLens) {
+        // Called from CodeLens with SQL provided
+        sql = sqlFromCodeLens.trim().replace(/;$/, '').trim();
+      } else {
+        // Called from keyboard shortcut - need to get SQL from editor
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+          vscode.window.showErrorMessage('No active SQL editor found.');
+          return;
+        }
+
+        // Check if there's a selection
+        const selection = editor.selection;
+        if (!selection.isEmpty) {
+          // Use selected text
+          sql = editor.document.getText(selection).trim().replace(/;$/, '').trim();
+        } else {
+          // No selection, find the query under cursor using similar logic to CodeLens
+          const document = editor.document;
+          const cursorPosition = editor.selection.active;
+          const text = document.getText();
+
+          // Split by semicolons (same logic as CodeLens provider)
+          const queries = text.split(/;\s*?(?=\S)/gm);
+
+          let currentOffset = 0;
+          let foundQuery = '';
+
+          for (const query of queries) {
+            const trimmedQuery = query.trim();
+            if (trimmedQuery.length === 0) {
+              currentOffset += query.length + 1;
+              continue;
+            }
+
+            const startOffset = text.indexOf(trimmedQuery, currentOffset);
+            if (startOffset === -1) {
+              currentOffset += query.length + 1;
+              continue;
+            }
+            const endOffset = startOffset + trimmedQuery.length;
+
+            const startPos = document.positionAt(startOffset);
+            const endPos = document.positionAt(endOffset);
+
+            // Check if cursor is within this query
+            if (cursorPosition.isAfterOrEqual(startPos) && cursorPosition.isBeforeOrEqual(endPos)) {
+              foundQuery = trimmedQuery;
+              break;
+            }
+
+            currentOffset = endOffset;
+          }
+
+          if (!foundQuery) {
+            vscode.window.showInformationMessage(
+              'No SQL query found under cursor. Place cursor within a query or select text to run.'
+            );
+            return;
+          }
+
+          sql = foundQuery.trim().replace(/;$/, '').trim();
+        }
+      }
+
+      if (!sql) {
+        vscode.window.showInformationMessage('No SQL query found to run.');
+        return;
+      }
+
+      // Generate a unique tab ID for this query
+      const tabId = `tab-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+      const queryPreview = sql.length > 30 ? sql.substring(0, 30) + '...' : sql;
+
+      // Create a new tab with the specific tabId and show loading
+      resultsViewProvider.createTabWithId(tabId, sql, queryPreview);
+      resultsViewProvider.showLoadingForTab(tabId, sql, queryPreview);
+
+      const config = vscode.workspace.getConfiguration('sqlPreview');
+      const host = config.get<string>('host', 'localhost');
+      const port = config.get<number>('port', 8080);
+      const user = config.get<string>('user', 'user');
+      const catalog = config.get<string>('catalog') || undefined;
+      const schema = config.get<string>('schema') || undefined;
+      const ssl = config.get<boolean>('ssl', false);
+      const sslVerify = config.get<boolean>('sslVerify', true);
+      const maxRows = config.get<number>('maxRowsToDisplay', 500);
+
+      // Get password securely from secret storage
+      const password = await getStoredPassword(context);
+
+      // --- Setup Authentication ---
+      let basicAuthHeader: string | undefined;
+      if (password) {
+        basicAuthHeader = 'Basic ' + Buffer.from(`${user}:${password}`).toString('base64');
+      }
+      // TODO: Handle other auth methods if needed
+
+      // --- Setup Client Options (excluding auth for create) ---
+      const clientOptions: {
+        server: string;
+        user: string;
+        catalog: string;
+        schema: string;
+        ssl?: { rejectUnauthorized: boolean };
+        auth?: BasicAuth;
+      } = {
+        server: `${ssl ? 'https' : 'http'}://${host}:${port}`,
+        user: user,
+        catalog: catalog || 'hive',
+        schema: schema || 'default',
+        ...(ssl ? { ssl: { rejectUnauthorized: sslVerify } } : {}),
+        // Pass custom agent ONLY if using SSL and custom verification needed
+        // httpsAgent: ssl ? createHttpsAgent(sslVerify) : undefined
+        // NOTE: trino-client might not support custom httpsAgent directly in options.
+        // We will handle SSL verification in direct axios calls.
+      };
+      // Add auth separately if supported by create method in this version
+      if (password) {
+        clientOptions.auth = new BasicAuth(user, password);
+      }
+
+      const client = Trino.create(clientOptions);
+
+      try {
+        // console.log(`Executing query: ${sql.substring(0, 100)}...`);
+
+        const results: unknown[][] = [];
+        let columns: { name: string; type: string }[] | null = null;
+        let rawResultObject: TrinoQueryResponse | null = null;
+        let nextUriFromResponse: string | undefined = undefined;
+        let infoUriFromResponse: string | undefined = undefined;
+        let queryIdFromResponse: string | undefined = undefined;
+        // let wasTruncated = false; // Currently unused, may be needed for future pagination logic
+        let totalRowsFetched = 0;
+        let currentPageUri: string | undefined = undefined; // Declare higher scope
+
+        // --- Execute Query and Fetch Pages ---
+        // console.log('Attempting to fetch first page...');
+        const queryIter = await client.query(sql);
+        const firstIteration = await queryIter.next();
+        rawResultObject = firstIteration.value;
+        // console.log(`First iteration result: done = ${firstIteration.done}`);
+
+        // Log the raw response for debugging
+        // console.log('Raw response structure:', {
+        //   hasValue: !!rawResultObject,
+        //   hasError: !!rawResultObject?.error,
+        //   hasStats: !!rawResultObject?.stats,
+        //   state: rawResultObject?.stats?.state,
+        //   hasColumns: !!rawResultObject?.columns,
+        //   hasData: !!rawResultObject?.data,
+        //   queryId: rawResultObject?.id,
+        // });
+
+        if (rawResultObject) {
+          // console.log('Raw FIRST queryResult value received.'); // No need to log full object now
+
+          // Check for error conditions in the response
+          if (rawResultObject.error) {
+            // Handle Presto/Trino error response
+            const errorMessage =
+              rawResultObject.error.message ||
+              rawResultObject.error.errorName ||
+              'Unknown query error';
+            const errorDetails =
+              rawResultObject.error.stack || rawResultObject.error.errorCode || undefined;
+            // console.error('Presto Query Error from response:', rawResultObject.error);
+            resultsViewProvider?.showErrorForTab(
+              tabId,
+              errorMessage,
+              errorDetails,
+              sql,
+              queryPreview
+            );
+            return;
+          }
+
+          // Check for failed query state
+          if (rawResultObject.stats && rawResultObject.stats.state === 'FAILED') {
+            const errorMessage = 'Query execution failed';
+            const errorDetails = rawResultObject.stats.state;
+            // console.error('Presto Query Failed:', rawResultObject);
+            resultsViewProvider?.showErrorForTab(
+              tabId,
+              errorMessage,
+              errorDetails,
+              sql,
+              queryPreview
+            );
+            return;
+          }
+
+          if (rawResultObject.columns && Array.isArray(rawResultObject.columns)) {
+            columns = rawResultObject.columns.map((col: { name: string; type: string }) => ({
+              name: col.name,
+              type: col.type,
+            }));
+          }
+          if (rawResultObject.data && Array.isArray(rawResultObject.data)) {
+            results.push(...rawResultObject.data);
+            totalRowsFetched += rawResultObject.data.length;
+          }
+          nextUriFromResponse = rawResultObject.nextUri;
+          infoUriFromResponse = rawResultObject.infoUri;
+          queryIdFromResponse = rawResultObject.id;
+        }
+
+        // --- Fetch subsequent pages if needed ---
+        currentPageUri = nextUriFromResponse; // Initialize before loop
+        if (columns && columns.length > 0) {
+          let pageCount = 1;
+          const httpsAgent = createHttpsAgent(sslVerify);
+
+          while (currentPageUri && totalRowsFetched < maxRows) {
+            pageCount++;
+            // console.log(
+            //   `Fetching page ${pageCount} (total rows so far: ${totalRowsFetched})... URI: ${currentPageUri}`
+            // );
+
+            try {
+              // Cast the config to bypass type checking for Node.js specific options
+              const config: {
+                headers?: Record<string, string>;
+                httpsAgent?: https.Agent;
+              } = {};
+
+              if (basicAuthHeader) {
+                config.headers = { Authorization: basicAuthHeader };
+              }
+              if (httpsAgent) {
+                config.httpsAgent = httpsAgent;
+              }
+              const response = await axios.get(currentPageUri, config);
+
+              const pageData = response.data as TrinoQueryResponse;
+
+              // Check for error conditions in pagination response
+              if (pageData?.error) {
+                const errorMessage =
+                  pageData.error.message ||
+                  pageData.error.errorName ||
+                  'Error in paginated results';
+                const errorDetails = pageData.error.stack || pageData.error.errorCode || undefined;
+                // console.error('Presto Query Error in pagination:', pageData.error);
+                resultsViewProvider?.showErrorForTab(
+                  tabId,
+                  errorMessage,
+                  errorDetails,
+                  sql,
+                  queryPreview
+                );
                 return;
+              }
+
+              if (pageData?.data && Array.isArray(pageData.data)) {
+                results.push(...pageData.data);
+                totalRowsFetched += pageData.data.length;
+                // console.log(
+                //   `Fetched ${pageData.data.length} rows from page ${pageCount}. New total: ${totalRowsFetched}`
+                // );
+              }
+              currentPageUri = pageData?.nextUri;
+              if (!currentPageUri) {
+                // console.log(
+                //   'No nextUri found in page',
+                //   pageCount,
+                //   'response. Pagination complete.'
+                // );
+              }
+            } catch (pageError: unknown) {
+              // console.error(
+              //   `Error fetching page ${pageCount} from ${currentPageUri}:`,
+              //   pageError instanceof Error ? pageError.message : 'Unknown error'
+              // );
+              vscode.window.showWarningMessage(
+                `Failed to fetch all results page ${pageCount}: ${pageError instanceof Error ? pageError.message : 'Unknown error'}`
+              );
+              currentPageUri = undefined; // Stop pagination on error
             }
+          }
 
-            // Check if there's a selection
-            const selection = editor.selection;
-            if (!selection.isEmpty) {
-                // Use selected text
-                sql = editor.document.getText(selection).trim().replace(/;$/, '').trim();
-            } else {
-                // No selection, find the query under cursor using similar logic to CodeLens
-                const document = editor.document;
-                const cursorPosition = editor.selection.active;
-                const text = document.getText();
-                
-                // Split by semicolons (same logic as CodeLens provider)
-                const queries = text.split(/;\s*?(?=\S)/gm);
-                
-                let currentOffset = 0;
-                let foundQuery = '';
-                
-                for (const query of queries) {
-                    const trimmedQuery = query.trim();
-                    if (trimmedQuery.length === 0) {
-                        currentOffset += query.length + 1;
-                        continue;
-                    }
-
-                    const startOffset = text.indexOf(trimmedQuery, currentOffset);
-                    if (startOffset === -1) {
-                        currentOffset += query.length + 1;
-                        continue;
-                    }
-                    const endOffset = startOffset + trimmedQuery.length;
-
-                    const startPos = document.positionAt(startOffset);
-                    const endPos = document.positionAt(endOffset);
-                    
-                    // Check if cursor is within this query
-                    if (cursorPosition.isAfterOrEqual(startPos) && cursorPosition.isBeforeOrEqual(endPos)) {
-                        foundQuery = trimmedQuery;
-                        break;
-                    }
-
-                    currentOffset = endOffset;
-                }
-                
-                if (!foundQuery) {
-                    vscode.window.showInformationMessage('No SQL query found under cursor. Place cursor within a query or select text to run.');
-                    return;
-                }
-                
-                sql = foundQuery.trim().replace(/;$/, '').trim();
-            }
+          // Check if truncated after pagination attempt
+          if (currentPageUri || totalRowsFetched > maxRows) {
+            // wasTruncated = true; // Currently unused
+            // console.log('Results potentially truncated after pagination.');
+          }
         }
 
-        if (!sql) {
-            vscode.window.showInformationMessage('No SQL query found to run.');
-            return; 
+        // console.log(
+        //   `Query finished processing. Total rows fetched: ${totalRowsFetched}. Columns: ${columns?.length ?? 0}`
+        // );
+
+        // --- Store result state and limit rows for display ---
+        // TODO: Re-enable result caching when export feature is implemented
+        // lastSuccessfulQueryResult = null;
+        // let displayRows = [...results]; // Use potentially paginated results
+        // const finalTotalRows = totalRowsFetched;
+
+        // Store the potentially paginated results (up to maxRows or full set)
+        if (columns && columns.length > 0) {
+          // TODO: Re-enable result caching when export feature is implemented
+          // const resultToStore: LastQueryResult = {
+          //     columns: columns,
+          //     rows: results,
+          //     query: sql,
+          //     ...(nextUriFromResponse && { nextUri: nextUriFromResponse }),
+          //     ...(infoUriFromResponse && { infoUri: infoUriFromResponse }),
+          //     ...(queryIdFromResponse && { id: queryIdFromResponse })
+          // };
+          // lastSuccessfulQueryResult = resultToStore;
+
+          // Slice for display if needed
+          if (results.length > maxRows) {
+            // console.log(`Limiting display rows from ${totalRowsFetched} to ${maxRows}`);
+            // displayRows = results.slice(0, maxRows); // Currently unused
+            // wasTruncated = true; // Currently unused
+          }
+
+          // Update truncation flag if pagination stopped due to hitting maxRows
+          if (!currentPageUri && totalRowsFetched >= maxRows) {
+            // We might have fetched exactly maxRows but there could have been more
+            // Or we fetched > maxRows and sliced. Either way, consider truncated.
+            // Exception: If the very last page happened to bring us exactly to maxRows and had no nextUri.
+            // It's safer to assume truncation if we hit the limit.
+            // wasTruncated = true; // Currently unused
+          }
+
+          // Send display results to view provider for the specific tab
+          const displayData: {
+            columns: Array<{ name: string; type: string }>;
+            rows: unknown[][];
+            query: string;
+            wasTruncated: boolean;
+            totalRowsInFirstBatch: number;
+            queryId?: string;
+            infoUri?: string;
+            nextUri?: string;
+          } = {
+            columns,
+            rows: results.slice(0, maxRows),
+            query: sql,
+            wasTruncated: results.length > maxRows || !!currentPageUri,
+            totalRowsInFirstBatch: results.length,
+          };
+
+          // Only add optional properties if they have defined values
+          if (queryIdFromResponse) {
+            displayData.queryId = queryIdFromResponse;
+          }
+          if (infoUriFromResponse) {
+            displayData.infoUri = infoUriFromResponse;
+          }
+          if (currentPageUri) {
+            displayData.nextUri = currentPageUri;
+          }
+
+          resultsViewProvider.showResultsForTab(tabId, displayData);
+        } else {
+          // No columns found - this could be a DDL/DML statement or an error condition
+          // console.warn('Could not determine columns or no columns returned...');
+
+          // If we got a queryId, it likely executed successfully (DDL/DML)
+          if (queryIdFromResponse) {
+            resultsViewProvider.showStatusMessage(
+              `Query executed successfully (Query ID: ${queryIdFromResponse}). No data returned - this is normal for DDL/DML operations.`
+            );
+          } else {
+            // No queryId might indicate an issue - provide more guidance
+            resultsViewProvider.showStatusMessage(
+              'Query completed but returned no data. Check for syntax errors or verify the query produces results.'
+            );
+          }
         }
+      } catch (error: unknown) {
+        // console.error('Trino Query Error:', error);
+        const errorMessage =
+          error instanceof Error ? error.message : 'Unknown error during query execution.';
+        vscode.window.showErrorMessage(`Trino Query Failed: ${errorMessage}`);
+        resultsViewProvider?.showErrorForTab(
+          tabId,
+          errorMessage,
+          error instanceof Error ? error.stack : undefined,
+          sql,
+          queryPreview
+        );
+      }
+    }
+  );
 
-        // Generate a unique tab ID for this query
-        const tabId = `tab-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-        const queryPreview = sql.length > 30 ? sql.substring(0, 30) + '...' : sql;
-        
-        // Create a new tab with the specific tabId and show loading
-        resultsViewProvider.createTabWithId(tabId, sql, queryPreview);
-        resultsViewProvider.showLoadingForTab(tabId, sql, queryPreview);
-
-        const config = vscode.workspace.getConfiguration('sqlPreview');
-        const host = config.get<string>('host', 'localhost');
-        const port = config.get<number>('port', 8080);
-        const user = config.get<string>('user', 'user');
-        const catalog = config.get<string>('catalog') || undefined;
-        const schema = config.get<string>('schema') || undefined;
-        const ssl = config.get<boolean>('ssl', false);
-        const sslVerify = config.get<boolean>('sslVerify', true);
-        const maxRows = config.get<number>('maxRowsToDisplay', 500);
-
-        // Get password securely from secret storage
-        const password = await getStoredPassword(context);
-
-        // --- Setup Authentication --- 
-        let basicAuthHeader: string | undefined;
-        if (password) {
-            basicAuthHeader = 'Basic ' + Buffer.from(`${user}:${password}`).toString('base64');
-        }
-        // TODO: Handle other auth methods if needed
-
-        // --- Setup Client Options (excluding auth for create) --- 
-        const clientOptions: any = {
-            server: `${ssl ? 'https' : 'http'}://${host}:${port}`,
-            user: user,
-            catalog: catalog,
-            schema: schema,
-            ssl: ssl ? { rejectUnauthorized: sslVerify } : undefined,
-            // Pass custom agent ONLY if using SSL and custom verification needed
-            // httpsAgent: ssl ? createHttpsAgent(sslVerify) : undefined 
-             // NOTE: trino-client might not support custom httpsAgent directly in options.
-             // We will handle SSL verification in direct axios calls.
-        };
-        // Add auth separately if supported by create method in this version
-        if (password) {
-             clientOptions.auth = new BasicAuth(user, password);
-        }
-
-        const client = Trino.create(clientOptions);
-
-        try {
-            console.log(`Executing query: ${sql.substring(0, 100)}...`);
-
-            const results: any[][] = [];
-            let columns: { name: string; type: string }[] | null = null;
-            let rawResultObject: any = null;
-            let nextUriFromResponse: string | undefined = undefined;
-            let infoUriFromResponse: string | undefined = undefined;
-            let queryIdFromResponse: string | undefined = undefined;
-            let wasTruncated = false;
-            let totalRowsFetched = 0;
-            let currentPageUri: string | undefined = undefined; // Declare higher scope
-
-            // --- Execute Query and Fetch Pages --- 
-            console.log("Attempting to fetch first page...");
-            const queryIter = await client.query(sql);
-            const firstIteration = await queryIter.next();
-            rawResultObject = firstIteration.value;
-            const firstDone = firstIteration.done;
-            console.log(`First iteration result: done = ${firstDone}`);
-            
-            // Log the raw response for debugging
-            console.log("Raw response structure:", {
-                hasValue: !!rawResultObject,
-                hasError: !!(rawResultObject?.error),
-                hasStats: !!(rawResultObject?.stats),
-                state: rawResultObject?.stats?.state,
-                hasColumns: !!(rawResultObject?.columns),
-                hasData: !!(rawResultObject?.data),
-                queryId: rawResultObject?.id
-            });
-
-            if (rawResultObject) {
-                console.log("Raw FIRST queryResult value received."); // No need to log full object now
-                
-                // Check for error conditions in the response
-                if (rawResultObject.error) {
-                    // Handle Presto/Trino error response
-                    const errorMessage = rawResultObject.error.message || rawResultObject.error.errorName || 'Unknown query error';
-                    const errorDetails = rawResultObject.error.stack || rawResultObject.error.errorCode || undefined;
-                    console.error("Presto Query Error from response:", rawResultObject.error);
-                    resultsViewProvider?.showErrorForTab(tabId, errorMessage, errorDetails, sql, queryPreview);
-                    return;
-                }
-                
-                // Check for failed query state
-                if (rawResultObject.stats && rawResultObject.stats.state === 'FAILED') {
-                    const errorMessage = rawResultObject.error?.message || 'Query execution failed';
-                    const errorDetails = rawResultObject.error?.stack || rawResultObject.stats.state;
-                    console.error("Presto Query Failed:", rawResultObject);
-                    resultsViewProvider?.showErrorForTab(tabId, errorMessage, errorDetails, sql, queryPreview);
-                    return;
-                }
-                
-                if (rawResultObject.columns && Array.isArray(rawResultObject.columns)) {
-                    columns = rawResultObject.columns.map((col: { name: string; type: string }) => ({ 
-                        name: col.name, 
-                        type: col.type 
-                    }));
-                }
-                if (rawResultObject.data && Array.isArray(rawResultObject.data)) {
-                    results.push(...rawResultObject.data);
-                    totalRowsFetched += rawResultObject.data.length;
-                }
-                nextUriFromResponse = rawResultObject.nextUri;
-                infoUriFromResponse = rawResultObject.infoUri;
-                queryIdFromResponse = rawResultObject.id;
-            }
-
-            // --- Fetch subsequent pages if needed --- 
-            currentPageUri = nextUriFromResponse; // Initialize before loop
-            if (columns && columns.length > 0) { 
-                let pageCount = 1;
-                const httpsAgent = createHttpsAgent(sslVerify); 
-                
-                while (currentPageUri && totalRowsFetched < maxRows) {
-                    pageCount++;
-                    console.log(`Fetching page ${pageCount} (total rows so far: ${totalRowsFetched})... URI: ${currentPageUri}`);
-                    
-                    try {
-                        // Cast the config to any to bypass type checking for Node.js specific options
-                        const config: any = {
-                            headers: basicAuthHeader ? { 'Authorization': basicAuthHeader } : undefined,
-                        };
-                        if (httpsAgent) {
-                            config.httpsAgent = httpsAgent;
-                        }
-                        const response = await axios.get(currentPageUri, config);
-                        
-                        const pageData: any = response.data;
-                        
-                        // Check for error conditions in pagination response
-                        if (pageData?.error) {
-                            const errorMessage = pageData.error.message || pageData.error.errorName || 'Error in paginated results';
-                            const errorDetails = pageData.error.stack || pageData.error.errorCode || undefined;
-                            console.error("Presto Query Error in pagination:", pageData.error);
-                            resultsViewProvider?.showErrorForTab(tabId, errorMessage, errorDetails, sql, queryPreview);
-                            return;
-                        }
-                        
-                        if (pageData?.data && Array.isArray(pageData.data)) {
-                            results.push(...pageData.data);
-                            totalRowsFetched += pageData.data.length;
-                            console.log(`Fetched ${pageData.data.length} rows from page ${pageCount}. New total: ${totalRowsFetched}`);
-                        }
-                        currentPageUri = pageData?.nextUri;
-                        if (!currentPageUri) {
-                            console.log("No nextUri found in page", pageCount, "response. Pagination complete.");
-                        }
-                    } catch (pageError: any) {
-                        console.error(`Error fetching page ${pageCount} from ${currentPageUri}:`, pageError.message);
-                        vscode.window.showWarningMessage(`Failed to fetch all results page ${pageCount}: ${pageError.message}`);
-                        currentPageUri = undefined; // Stop pagination on error
-                    }
-                }
-                
-                // Check if truncated after pagination attempt
-                if (currentPageUri || totalRowsFetched > maxRows) {
-                     wasTruncated = true;
-                     console.log("Results potentially truncated after pagination.");
-                }
-            }
-
-            console.log(`Query finished processing. Total rows fetched: ${totalRowsFetched}. Columns: ${columns?.length ?? 0}`);
-
-            // --- Store result state and limit rows for display --- 
-            lastSuccessfulQueryResult = null; 
-            let displayRows = [...results]; // Use potentially paginated results
-            const finalTotalRows = totalRowsFetched;
-
-            // Store the potentially paginated results (up to maxRows or full set)
-            if (columns && columns.length > 0) {
-                 lastSuccessfulQueryResult = {
-                    columns: columns,
-                    // Store ALL fetched rows for potential export, even if > maxRows
-                    rows: results, 
-                    query: sql,
-                    // nextUri here indicates if there was potentially MORE after we stopped fetching
-                    nextUri: nextUriFromResponse, 
-                    infoUri: infoUriFromResponse,
-                    id: queryIdFromResponse
-                };
-                
-                // Slice for display if needed
-                if (results.length > maxRows) {
-                    console.log(`Limiting display rows from ${totalRowsFetched} to ${maxRows}`);
-                    displayRows = results.slice(0, maxRows); 
-                    wasTruncated = true;
-                }
-
-                // Update truncation flag if pagination stopped due to hitting maxRows
-                if (!currentPageUri && totalRowsFetched >= maxRows) {
-                    // We might have fetched exactly maxRows but there could have been more
-                    // Or we fetched > maxRows and sliced. Either way, consider truncated.
-                    // Exception: If the very last page happened to bring us exactly to maxRows and had no nextUri.
-                    // It's safer to assume truncation if we hit the limit.
-                    wasTruncated = true;
-                }
-                
-                // Send display results to view provider for the specific tab
-                 resultsViewProvider.showResultsForTab(tabId, {
-                    columns,
-                    rows: results.slice(0, maxRows),
-                    query: sql,
-                    wasTruncated: results.length > maxRows || !!currentPageUri,
-                    totalRowsInFirstBatch: results.length,
-                    queryId: queryIdFromResponse,
-                    infoUri: infoUriFromResponse,
-                    nextUri: currentPageUri
-                });
-            } else {
-                 // No columns found - this could be a DDL/DML statement or an error condition
-                 console.warn("Could not determine columns or no columns returned...");
-                 
-                 // If we got a queryId, it likely executed successfully (DDL/DML)
-                 if (queryIdFromResponse) {
-                     resultsViewProvider.showStatusMessage(`Query executed successfully (Query ID: ${queryIdFromResponse}). No data returned - this is normal for DDL/DML operations.`);
-                 } else {
-                     // No queryId might indicate an issue - provide more guidance
-                     resultsViewProvider.showStatusMessage('Query completed but returned no data. Check for syntax errors or verify the query produces results.');
-                 }
-            }
-            
-        } catch (error: any) {
-            console.error("Trino Query Error:", error);
-            const errorMessage = error.message || 'Unknown error during query execution.';
-            vscode.window.showErrorMessage(`Trino Query Failed: ${errorMessage}`);
-            resultsViewProvider?.showErrorForTab(tabId, errorMessage, error.stack, sql, queryPreview);
-        }
-    });
-
-    context.subscriptions.push(
-        runQueryCommand,
-        setPasswordCommand, 
-        setPasswordFromSettingsCommand,
-        clearPasswordCommand,
-        configListener
-    );
+  context.subscriptions.push(
+    runQueryCommand,
+    setPasswordCommand,
+    setPasswordFromSettingsCommand,
+    clearPasswordCommand,
+    configListener
+  );
 }
 
 /**
  * This method is called when your extension is deactivated.
  */
 export function deactivate() {
-    console.log('Extension "presto-runner" is now deactivated.');
-    // Cleanup resources if needed
-} 
+  // console.log('Extension "presto-runner" is now deactivated.');
+  // Cleanup resources if needed
+}

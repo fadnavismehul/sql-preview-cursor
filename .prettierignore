@@ -1,0 +1,7 @@
+out/
+dist/
+coverage/
+node_modules/
+*.vsix
+webviews/**/*.js
+**/*.d.ts

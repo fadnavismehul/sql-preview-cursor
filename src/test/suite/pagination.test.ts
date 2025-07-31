@@ -5,173 +5,180 @@ import { activate } from '../../extension';
 
 // Mock the entire trino-client module
 jest.mock('trino-client', () => ({
-    Client: jest.fn()
+  Client: jest.fn(),
 }));
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
 describe('Pagination Tests', () => {
-    beforeEach(() => {
-        jest.clearAllMocks();
-        // Mock configuration
-        mockWorkspaceConfig.get.mockImplementation((key: string) => {
-            switch(key) {
-                case 'maxRowsToDisplay': return 100;
-                case 'host': return 'localhost';
-                case 'port': return 8080;
-                case 'user': return 'test';
-                case 'ssl': return false;
-                case 'sslVerify': return true;
-                default: return '';
-            }
-        });
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // Mock configuration
+    mockWorkspaceConfig.get.mockImplementation((key: string) => {
+      switch (key) {
+        case 'maxRowsToDisplay':
+          return 100;
+        case 'host':
+          return 'localhost';
+        case 'port':
+          return 8080;
+        case 'user':
+          return 'test';
+        case 'ssl':
+          return false;
+        case 'sslVerify':
+          return true;
+        default:
+          return '';
+      }
     });
+  });
 
-    test('should fetch multiple pages until maxRowsToDisplay is reached', async () => {
-        // Mock initial query response
-        const mockQueryResponse = {
-            id: 'query_123',
-            columns: [{ name: 'col1', type: 'varchar' }],
-            data: Array(50).fill({ col1: 'value' }),
-            nextUri: 'http://localhost:8080/v1/query/123/1',
-        };
+  test('should fetch multiple pages until maxRowsToDisplay is reached', async () => {
+    // Mock initial query response
+    const mockQueryResponse = {
+      id: 'query_123',
+      columns: [{ name: 'col1', type: 'varchar' }],
+      data: Array(50).fill({ col1: 'value' }),
+      nextUri: 'http://localhost:8080/v1/query/123/1',
+    };
 
-        // Mock subsequent pages
-        mockedAxios.get
-            .mockResolvedValueOnce({
-                data: {
-                    data: Array(50).fill({ col1: 'value2' }),
-                    nextUri: 'http://localhost:8080/v1/query/123/2',
-                }
-            } as any)
-            .mockResolvedValueOnce({
-                data: {
-                    data: Array(50).fill({ col1: 'value3' }),
-                    nextUri: null, // Last page
-                }
-            } as any);
+    // Mock subsequent pages
+    mockedAxios.get
+      .mockResolvedValueOnce({
+        data: {
+          data: Array(50).fill({ col1: 'value2' }),
+          nextUri: 'http://localhost:8080/v1/query/123/2',
+        },
+      } as any)
+      .mockResolvedValueOnce({
+        data: {
+          data: Array(50).fill({ col1: 'value3' }),
+          nextUri: null, // Last page
+        },
+      } as any);
 
-        // Setup trino-client mock
-        const mockTrinoClient = {
-            query: jest.fn().mockReturnValue({
-                next: jest.fn().mockResolvedValue(mockQueryResponse)
-            })
-        };
-        jest.requireMock('trino-client').Client.mockImplementation(() => mockTrinoClient);
+    // Setup trino-client mock
+    const mockTrinoClient = {
+      query: jest.fn().mockReturnValue({
+        next: jest.fn().mockResolvedValue(mockQueryResponse),
+      }),
+    };
+    jest.requireMock('trino-client').Client.mockImplementation(() => mockTrinoClient);
 
-        // Activate extension
-        const context = mockContext as unknown as vscode.ExtensionContext;
-        await activate(context);
+    // Activate extension
+    const context = mockContext as unknown as vscode.ExtensionContext;
+    await activate(context);
 
-        // Trigger query execution
-        const command = vscode.commands.executeCommand('presto.runCursorQuery', 'SELECT * FROM test_table');
-        
-        // Wait for async operations
-        await new Promise(resolve => setTimeout(resolve, 100));
+    // Trigger query execution
+    vscode.commands.executeCommand('presto.runCursorQuery', 'SELECT * FROM test_table');
 
-        // Verify initial query was made
-        expect(mockTrinoClient.query).toHaveBeenCalled();
+    // Wait for async operations
+    await new Promise(resolve => setTimeout(resolve, 100));
 
-        // Verify subsequent pages were fetched
-        expect(mockedAxios.get).toHaveBeenCalledTimes(2);
-        expect(mockedAxios.get).toHaveBeenCalledWith(
-            'http://localhost:8080/v1/query/123/1',
-            expect.any(Object)
-        );
-        expect(mockedAxios.get).toHaveBeenCalledWith(
-            'http://localhost:8080/v1/query/123/2',
-            expect.any(Object)
-        );
-    });
+    // Verify initial query was made
+    expect(mockTrinoClient.query).toHaveBeenCalled();
 
-    test('should stop fetching when maxRowsToDisplay is reached', async () => {
-        // Mock maxRowsToDisplay = 75
-        mockWorkspaceConfig.get.mockImplementation((key: string) => 
-            key === 'maxRowsToDisplay' ? 75 : mockWorkspaceConfig.get(key)
-        );
+    // Verify subsequent pages were fetched
+    expect(mockedAxios.get).toHaveBeenCalledTimes(2);
+    expect(mockedAxios.get).toHaveBeenCalledWith(
+      'http://localhost:8080/v1/query/123/1',
+      expect.any(Object)
+    );
+    expect(mockedAxios.get).toHaveBeenCalledWith(
+      'http://localhost:8080/v1/query/123/2',
+      expect.any(Object)
+    );
+  });
 
-        // Mock initial query response (50 rows)
-        const mockQueryResponse = {
-            id: 'query_123',
-            columns: [{ name: 'col1', type: 'varchar' }],
-            data: Array(50).fill({ col1: 'value' }),
-            nextUri: 'http://localhost:8080/v1/query/123/1',
-        };
+  test('should stop fetching when maxRowsToDisplay is reached', async () => {
+    // Mock maxRowsToDisplay = 75
+    mockWorkspaceConfig.get.mockImplementation((key: string) =>
+      key === 'maxRowsToDisplay' ? 75 : mockWorkspaceConfig.get(key)
+    );
 
-        // Mock page 2 (50 rows, but we should only take 25)
-        mockedAxios.get.mockResolvedValueOnce({
-            data: {
-                data: Array(50).fill({ col1: 'value2' }),
-                nextUri: 'http://localhost:8080/v1/query/123/2', // We shouldn't reach this
-            }
-        } as any);
+    // Mock initial query response (50 rows)
+    const mockQueryResponse = {
+      id: 'query_123',
+      columns: [{ name: 'col1', type: 'varchar' }],
+      data: Array(50).fill({ col1: 'value' }),
+      nextUri: 'http://localhost:8080/v1/query/123/1',
+    };
 
-        // Setup mocks
-        const mockTrinoClient = {
-            query: jest.fn().mockReturnValue({
-                next: jest.fn().mockResolvedValue(mockQueryResponse)
-            })
-        };
-        jest.requireMock('trino-client').Client.mockImplementation(() => mockTrinoClient);
+    // Mock page 2 (50 rows, but we should only take 25)
+    mockedAxios.get.mockResolvedValueOnce({
+      data: {
+        data: Array(50).fill({ col1: 'value2' }),
+        nextUri: 'http://localhost:8080/v1/query/123/2', // We shouldn't reach this
+      },
+    } as any);
 
-        // Activate extension
-        const context = mockContext as unknown as vscode.ExtensionContext;
-        await activate(context);
+    // Setup mocks
+    const mockTrinoClient = {
+      query: jest.fn().mockReturnValue({
+        next: jest.fn().mockResolvedValue(mockQueryResponse),
+      }),
+    };
+    jest.requireMock('trino-client').Client.mockImplementation(() => mockTrinoClient);
 
-        // Trigger query execution
-        const command = vscode.commands.executeCommand('presto.runCursorQuery', 'SELECT * FROM test_table');
-        
-        // Wait for async operations
-        await new Promise(resolve => setTimeout(resolve, 100));
+    // Activate extension
+    const context = mockContext as unknown as vscode.ExtensionContext;
+    await activate(context);
 
-        // Verify we only fetched one additional page
-        expect(mockedAxios.get).toHaveBeenCalledTimes(1);
-        expect(mockedAxios.get).toHaveBeenCalledWith(
-            'http://localhost:8080/v1/query/123/1',
-            expect.any(Object)
-        );
-    });
+    // Trigger query execution
+    vscode.commands.executeCommand('presto.runCursorQuery', 'SELECT * FROM test_table');
 
-    test('should handle pagination errors gracefully', async () => {
-        // Mock initial successful query
-        const mockQueryResponse = {
-            id: 'query_123',
-            columns: [{ name: 'col1', type: 'varchar' }],
-            data: Array(50).fill({ col1: 'value' }),
-            nextUri: 'http://localhost:8080/v1/query/123/1',
-        };
+    // Wait for async operations
+    await new Promise(resolve => setTimeout(resolve, 100));
 
-        // Setup mocks
-        const mockTrinoClient = {
-            query: jest.fn().mockReturnValue({
-                next: jest.fn().mockResolvedValue(mockQueryResponse)
-            })
-        };
-        jest.requireMock('trino-client').Client.mockImplementation(() => mockTrinoClient);
+    // Verify we only fetched one additional page
+    expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+    expect(mockedAxios.get).toHaveBeenCalledWith(
+      'http://localhost:8080/v1/query/123/1',
+      expect.any(Object)
+    );
+  });
 
-        // Mock axios to fail on pagination request
-        mockedAxios.get.mockRejectedValueOnce(new Error('Network error'));
+  test('should handle pagination errors gracefully', async () => {
+    // Mock initial successful query
+    const mockQueryResponse = {
+      id: 'query_123',
+      columns: [{ name: 'col1', type: 'varchar' }],
+      data: Array(50).fill({ col1: 'value' }),
+      nextUri: 'http://localhost:8080/v1/query/123/1',
+    };
 
-        // Spy on vscode.window.showWarningMessage
-        const showWarningMessage = jest.spyOn(vscode.window, 'showWarningMessage');
+    // Setup mocks
+    const mockTrinoClient = {
+      query: jest.fn().mockReturnValue({
+        next: jest.fn().mockResolvedValue(mockQueryResponse),
+      }),
+    };
+    jest.requireMock('trino-client').Client.mockImplementation(() => mockTrinoClient);
 
-        // Activate extension
-        const context = mockContext as unknown as vscode.ExtensionContext;
-        await activate(context);
+    // Mock axios to fail on pagination request
+    mockedAxios.get.mockRejectedValueOnce(new Error('Network error'));
 
-        // Trigger query execution
-        const command = vscode.commands.executeCommand('presto.runCursorQuery', 'SELECT * FROM test_table');
-        
-        // Wait for async operations
-        await new Promise(resolve => setTimeout(resolve, 100));
+    // Spy on vscode.window.showWarningMessage
+    const showWarningMessage = jest.spyOn(vscode.window, 'showWarningMessage');
 
-        // Verify error handling
-        expect(showWarningMessage).toHaveBeenCalledWith(
-            expect.stringContaining('Failed to fetch all results page 2')
-        );
+    // Activate extension
+    const context = mockContext as unknown as vscode.ExtensionContext;
+    await activate(context);
 
-        // Verify we don't try to fetch more pages after error
-        expect(mockedAxios.get).toHaveBeenCalledTimes(1);
-    });
-}); 
+    // Trigger query execution
+    vscode.commands.executeCommand('presto.runCursorQuery', 'SELECT * FROM test_table');
+
+    // Wait for async operations
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Verify error handling
+    expect(showWarningMessage).toHaveBeenCalledWith(
+      expect.stringContaining('Failed to fetch all results page 2')
+    );
+
+    // Verify we don't try to fetch more pages after error
+    expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+  });
+});
