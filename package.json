@@ -139,6 +139,13 @@
           "default": 500,
           "description": "Maximum number of rows to display in the results grid. Full results can be exported.",
           "minimum": 1
+        },
+        "sqlPreview.fontSize": {
+          "type": "number",
+          "default": 0,
+          "description": "Font size for the results view in pixels. Set to 0 to inherit from VS Code editor font size.",
+          "minimum": 0,
+          "maximum": 32
         }
       }
     }

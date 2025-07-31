@@ -41,6 +41,30 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
         // Set the initial HTML content
         webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
 
+        // Listen for configuration changes and update the webview
+        const configListener = vscode.workspace.onDidChangeConfiguration(e => {
+            if (e.affectsConfiguration('sqlPreview.fontSize')) {
+                // Get the new font size setting
+                const config = vscode.workspace.getConfiguration('sqlPreview');
+                const customFontSize = config.get<number>('fontSize', 0);
+                
+                // Send message to webview to update font size without losing state
+                const fontSizeValue = customFontSize > 0 
+                    ? `${customFontSize}px` 
+                    : `var(--vscode-editor-font-size, var(--vscode-font-size))`;
+                    
+                webviewView.webview.postMessage({ 
+                    type: 'updateFontSize', 
+                    fontSize: fontSizeValue 
+                });
+            }
+        });
+
+        // Dispose of the listener when the webview is disposed
+        webviewView.onDidDispose(() => {
+            configListener.dispose();
+        });
+
         // Handle messages from the webview (if needed in the future)
         webviewView.webview.onDidReceiveMessage(data => {
             switch (data.command) {
@@ -186,6 +210,10 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
         // Get URIs for local resources
         // IMPORTANT: Use webview.asWebviewUri to ensure resources load correctly
 
+        // Get font size configuration
+        const config = vscode.workspace.getConfiguration('sqlPreview');
+        const customFontSize = config.get<number>('fontSize', 0);
+        
         // Nonce for Content Security Policy
         const nonce = getNonce();
 
@@ -214,6 +242,11 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
             connect-src https://*.myteksi.net https://sentry.io ${cspSource};
         `;
 
+        // Generate font size CSS custom property
+        const fontSizeStyle = customFontSize > 0 
+            ? `--sql-preview-font-size: ${customFontSize}px;` 
+            : `--sql-preview-font-size: var(--vscode-editor-font-size, var(--vscode-font-size));`;
+
         return `<!DOCTYPE html>
             <html lang="en">
             <head>
@@ -229,6 +262,13 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
                 <link href="${agGridThemeStylesUri}" rel="stylesheet">
                 <!-- Load local CSS -->
                 <link href="${stylesUri}" rel="stylesheet">
+                
+                <!-- Custom font size configuration -->
+                <style nonce="${nonce}">
+                    :root {
+                        ${fontSizeStyle}
+                    }
+                </style>
                 
                 <title>SQL Preview Results</title>
             </head>

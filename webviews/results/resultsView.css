@@ -3,13 +3,13 @@
 /* Ensure HTML and Body pick up base styles */
 html {
     font-family: var(--vscode-font-family);
-    font-size: var(--vscode-font-size);
+    font-size: var(--sql-preview-font-size, var(--vscode-editor-font-size, var(--vscode-font-size)));
 }
 
 /* Base body inherits VS Code styles */
 body {
     font-family: var(--vscode-font-family);
-    font-size: var(--vscode-font-size);
+    font-size: var(--sql-preview-font-size, var(--vscode-editor-font-size, var(--vscode-font-size)));
     color: var(--vscode-editor-foreground);
     background-color: var(--vscode-editor-background);
     padding: 0; /* Remove body padding, let elements manage their own */
@@ -50,7 +50,7 @@ body {
     min-width: 120px;
     max-width: 200px;
     position: relative;
-    font-size: calc(var(--vscode-font-size) * 0.9);
+    font-size: calc(var(--sql-preview-font-size, var(--vscode-editor-font-size, var(--vscode-font-size))) * 0.9);
 }
 
 .tab:hover {
@@ -144,7 +144,7 @@ body {
 .controls {
     padding: 6px 12px;
     border-bottom: 1px solid var(--vscode-editorWidget-border, var(--vscode-contrastBorder, transparent));
-    font-size: calc(var(--vscode-font-size) * 0.9);
+    font-size: calc(var(--sql-preview-font-size, var(--vscode-editor-font-size, var(--vscode-font-size))) * 0.9);
     color: var(--vscode-descriptionForeground);
     display: flex;
     justify-content: space-between;
@@ -177,7 +177,7 @@ body {
     color: var(--vscode-button-foreground);
     border: 1px solid var(--vscode-button-border, transparent);
     padding: 2px 8px;
-    font-size: calc(var(--vscode-font-size) * 0.9);
+    font-size: calc(var(--sql-preview-font-size, var(--vscode-editor-font-size, var(--vscode-font-size))) * 0.9);
     border-radius: 2px;
     cursor: pointer;
     flex-shrink: 0; 
@@ -193,7 +193,7 @@ body {
     align-items: center;
     justify-content: center;
     padding: 20px;
-    font-size: var(--vscode-font-size);
+    font-size: var(--sql-preview-font-size, var(--vscode-editor-font-size, var(--vscode-font-size)));
     color: var(--vscode-descriptionForeground);
     flex-grow: 1; 
 }
@@ -226,7 +226,7 @@ body {
     word-wrap: break-word;
     flex-shrink: 0;
     font-family: var(--vscode-editor-font-family, 'Consolas', 'Courier New', monospace);
-    font-size: calc(var(--vscode-font-size) * 0.9);
+    font-size: calc(var(--sql-preview-font-size, var(--vscode-editor-font-size, var(--vscode-font-size))) * 0.9);
     line-height: 1.4;
     max-height: 300px;
     overflow-y: auto;
@@ -246,7 +246,7 @@ body {
 .ag-theme-quartz {
     /* Core variables: Pipe VS Code theme into AG Grid variables */
     /* REMOVE --ag-font-family from here. It will be defined in theme-specific blocks. */
-    --ag-font-size: var(--vscode-font-size); /* Still use VSCode's font size preference */
+    --ag-font-size: var(--sql-preview-font-size, var(--vscode-editor-font-size, var(--vscode-font-size))); /* Use custom font size with VSCode fallback */
     
     /* Default background colors - will be overridden by theme specific rules */
     /* These might also be better scoped inside theme blocks if issues persist, but let's focus on font first. */
@@ -406,7 +406,7 @@ body.vscode-dark .ag-theme-quartz .ag-cell .ag-cell-value { /* Target inner span
     border: 1px solid var(--vscode-input-border);
     border-radius: 2px;
     padding: 2px 4px;
-    font-size: calc(var(--vscode-font-size) * 0.9);
+    font-size: calc(var(--sql-preview-font-size, var(--vscode-editor-font-size, var(--vscode-font-size))) * 0.9);
     height: calc(var(--ag-header-height) - 12px); /* Adjust based on header height & padding */
     margin-top: 2px; /* Small adjustment */
 }
