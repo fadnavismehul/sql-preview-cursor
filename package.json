@@ -88,6 +88,13 @@
         }
       ]
     },
+    "keybindings": [
+      {
+        "command": "sql.runCursorQuery",
+        "key": "cmd+enter",
+        "when": "editorTextFocus && editorLangId == sql"
+      }
+    ],
     "configuration": {
       "title": "SQL Preview",
       "properties": {
