@@ -159,19 +159,81 @@ export function activate(context: vscode.ExtensionContext) {
     });
 
     // Register the command to run the query under the cursor
-    const runQueryCommand = vscode.commands.registerCommand('sql.runCursorQuery', async (sqlFromCodeLens: string) => {
+    const runQueryCommand = vscode.commands.registerCommand('sql.runCursorQuery', async (sqlFromCodeLens?: string) => {
         if (!resultsViewProvider) {
             vscode.window.showErrorMessage('Results view is not available.');
             return;
         }
-        
-        // --- Strip trailing semicolon and whitespace --- 
-        const sql = sqlFromCodeLens.trim().replace(/;$/, '').trim();
+
+        let sql: string;
+
+        if (sqlFromCodeLens) {
+            // Called from CodeLens with SQL provided
+            sql = sqlFromCodeLens.trim().replace(/;$/, '').trim();
+        } else {
+            // Called from keyboard shortcut - need to get SQL from editor
+            const editor = vscode.window.activeTextEditor;
+            if (!editor) {
+                vscode.window.showErrorMessage('No active SQL editor found.');
+                return;
+            }
+
+            // Check if there's a selection
+            const selection = editor.selection;
+            if (!selection.isEmpty) {
+                // Use selected text
+                sql = editor.document.getText(selection).trim().replace(/;$/, '').trim();
+            } else {
+                // No selection, find the query under cursor using similar logic to CodeLens
+                const document = editor.document;
+                const cursorPosition = editor.selection.active;
+                const text = document.getText();
+                
+                // Split by semicolons (same logic as CodeLens provider)
+                const queries = text.split(/;\s*?(?=\S)/gm);
+                
+                let currentOffset = 0;
+                let foundQuery = '';
+                
+                for (const query of queries) {
+                    const trimmedQuery = query.trim();
+                    if (trimmedQuery.length === 0) {
+                        currentOffset += query.length + 1;
+                        continue;
+                    }
+
+                    const startOffset = text.indexOf(trimmedQuery, currentOffset);
+                    if (startOffset === -1) {
+                        currentOffset += query.length + 1;
+                        continue;
+                    }
+                    const endOffset = startOffset + trimmedQuery.length;
+
+                    const startPos = document.positionAt(startOffset);
+                    const endPos = document.positionAt(endOffset);
+                    
+                    // Check if cursor is within this query
+                    if (cursorPosition.isAfterOrEqual(startPos) && cursorPosition.isBeforeOrEqual(endPos)) {
+                        foundQuery = trimmedQuery;
+                        break;
+                    }
+
+                    currentOffset = endOffset;
+                }
+                
+                if (!foundQuery) {
+                    vscode.window.showInformationMessage('No SQL query found under cursor. Place cursor within a query or select text to run.');
+                    return;
+                }
+                
+                sql = foundQuery.trim().replace(/;$/, '').trim();
+            }
+        }
+
         if (!sql) {
             vscode.window.showInformationMessage('No SQL query found to run.');
             return; 
         }
-        // --- End stripping ---
 
         // Generate a unique tab ID for this query
         const tabId = `tab-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
@@ -412,7 +474,7 @@ export function activate(context: vscode.ExtensionContext) {
     });
 
     context.subscriptions.push(
-        runQueryCommand, 
+        runQueryCommand,
         setPasswordCommand, 
         setPasswordFromSettingsCommand,
         clearPasswordCommand,
