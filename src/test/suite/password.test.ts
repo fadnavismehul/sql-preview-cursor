@@ -35,14 +35,16 @@ describe('Password Security Tests', () => {
     // Mock workspace configuration
     (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue(mockWorkspaceConfig);
 
-    // Mock window methods
-    (vscode.window.showInputBox as jest.Mock) = jest.fn();
-    (vscode.window.showInformationMessage as jest.Mock) = jest.fn();
-
-    // Mock commands registration
-    (vscode.commands.registerCommand as jest.Mock) = jest.fn();
-    (vscode.window.registerWebviewViewProvider as jest.Mock) = jest.fn();
-    (vscode.languages.registerCodeLensProvider as jest.Mock) = jest.fn();
+    // Reset mocks to their default implementations
+    (vscode.window.showInputBox as jest.Mock).mockResolvedValue(undefined);
+    (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(undefined);
+    (vscode.commands.registerCommand as jest.Mock).mockReturnValue({ dispose: jest.fn() });
+    (vscode.window.registerWebviewViewProvider as jest.Mock).mockReturnValue({
+      dispose: jest.fn(),
+    });
+    (vscode.languages.registerCodeLensProvider as jest.Mock).mockReturnValue({
+      dispose: jest.fn(),
+    });
   });
 
   test('should register password management commands', async () => {

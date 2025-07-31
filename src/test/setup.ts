@@ -7,6 +7,8 @@ const mockWebviewPanel = {
     html: '',
     postMessage: jest.fn(),
     onDidReceiveMessage: jest.fn(),
+    asWebviewUri: jest.fn(uri => uri),
+    options: {},
   },
   onDidDispose: jest.fn(),
   reveal: jest.fn(),
@@ -35,16 +37,24 @@ const mockContext = {
     delete: jest.fn(),
   },
   extensionPath: '/mock/extension/path',
+  extensionUri: { fsPath: '/mock/extension/path', path: '/mock/extension/path' },
   asAbsolutePath: (relativePath: string) => `/mock/extension/path/${relativePath}`,
 };
 
 // Mock VS Code namespace
 jest.mock('vscode', () => ({
+  commands: {
+    registerCommand: jest.fn(),
+    executeCommand: jest.fn(),
+  },
   window: {
     createWebviewPanel: jest.fn(() => mockWebviewPanel),
+    registerWebviewViewProvider: jest.fn(),
     showInformationMessage: jest.fn(),
     showErrorMessage: jest.fn(),
     showWarningMessage: jest.fn(),
+    showInputBox: jest.fn(),
+    activeTextEditor: undefined,
     createOutputChannel: jest.fn(() => ({
       appendLine: jest.fn(),
       show: jest.fn(),
@@ -52,15 +62,22 @@ jest.mock('vscode', () => ({
       dispose: jest.fn(),
     })),
   },
+  languages: {
+    registerCodeLensProvider: jest.fn(),
+  },
   workspace: {
     getConfiguration: jest.fn(() => mockWorkspaceConfig),
     workspaceFolders: [],
-    onDidChangeConfiguration: jest.fn(),
+    onDidChangeConfiguration: jest.fn(() => ({ dispose: jest.fn() })),
   },
   EventEmitter: EventEmitter,
   Uri: {
-    file: jest.fn(path => ({ fsPath: path })),
+    file: jest.fn(path => ({ fsPath: path, path })),
     parse: jest.fn(),
+    joinPath: jest.fn((base, ...paths) => ({
+      fsPath: `${base.fsPath}/${paths.join('/')}`,
+      path: `${base.path}/${paths.join('/')}`,
+    })),
   },
   ViewColumn: {
     One: 1,
@@ -81,6 +98,10 @@ jest.mock('vscode', () => ({
 
 // Mock trino-client
 jest.mock('trino-client', () => ({
+  Trino: {
+    create: jest.fn(),
+  },
+  BasicAuth: jest.fn(),
   Client: jest.fn().mockImplementation(() => ({
     query: jest.fn(),
     execute: jest.fn(),

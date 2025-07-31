@@ -4,11 +4,23 @@ import { ResultsViewProvider } from '../../resultsViewProvider';
 
 describe('ResultsViewProvider Tests', () => {
   let resultsViewProvider: ResultsViewProvider;
+  let mockWebviewView: any;
 
   beforeEach(() => {
     jest.clearAllMocks();
+
+    // Create a mock webview view that includes the mock webview panel
+    mockWebviewView = {
+      webview: mockWebviewPanel.webview,
+      show: jest.fn(),
+      onDidDispose: jest.fn(),
+    };
+
     // Create with extension Uri
     resultsViewProvider = new ResultsViewProvider(vscode.Uri.file('/mock/extension/path'));
+
+    // Manually trigger the resolveWebviewView to set up the internal _view
+    resultsViewProvider.resolveWebviewView(mockWebviewView);
   });
 
   test('should show results with truncation warning when results exceed maxRowsToDisplay', async () => {
