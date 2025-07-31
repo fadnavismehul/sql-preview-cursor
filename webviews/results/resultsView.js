@@ -750,6 +750,33 @@ if (typeof agGrid === 'undefined') {
                     if (elements.errorContainer) elements.errorContainer.style.display = 'none';
                 }
                 break;
+                
+            case 'updateFontSize':
+                console.log("Received updateFontSize:", message.fontSize);
+                
+                // Update the CSS custom property for font size on document root
+                document.documentElement.style.setProperty('--sql-preview-font-size', message.fontSize);
+                
+                // Update AG Grid font size properties on each grid container
+                tabs.forEach(tab => {
+                    const elements = getTabElements(tab.id);
+                    if (elements && elements.gridElement) {
+                        // Set font size CSS custom properties directly on the grid container
+                        // According to AG Grid docs, the grid automatically recalculates row height
+                        // when font size changes: row height = max(iconSize, dataFontSize) + padding
+                        elements.gridElement.style.setProperty('--ag-font-size', message.fontSize);
+                        elements.gridElement.style.setProperty('--ag-header-font-size', message.fontSize);
+                        elements.gridElement.style.setProperty('--ag-cell-font-size', message.fontSize);
+                        
+                        // Trigger AG Grid to recalculate row heights transparently
+                        if (tab.gridApi) {
+                            // resetRowHeights() tells AG Grid to recalculate all row heights
+                            // based on current content + font size, which is the proper AG Grid way
+                            tab.gridApi.resetRowHeights();
+                        }
+                    }
+                });
+                break;
         }
     });
 
