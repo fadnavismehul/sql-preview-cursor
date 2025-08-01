@@ -164,27 +164,37 @@ body {
     color: var(--vscode-editor-foreground); 
 }
 
-#row-count-info {
-    /* Inherits color from .controls */
-}
+/* #row-count-info inherits color from .controls */
 
 #truncation-warning {
     font-style: italic;
 }
 
-#export-button {
+.export-button {
     background-color: var(--vscode-button-background);
     color: var(--vscode-button-foreground);
     border: 1px solid var(--vscode-button-border, transparent);
-    padding: 2px 8px;
+    padding: 4px 12px;
     font-size: calc(var(--sql-preview-font-size, var(--vscode-editor-font-size, var(--vscode-font-size))) * 0.9);
+    font-family: var(--vscode-font-family);
     border-radius: 2px;
     cursor: pointer;
-    flex-shrink: 0; 
+    flex-shrink: 0;
+    outline: none;
+    transition: background-color 0.1s ease-in-out;
 }
 
-#export-button:hover {
+.export-button:hover {
     background-color: var(--vscode-button-hoverBackground);
+}
+
+.export-button:focus {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: 2px;
+}
+
+.export-button:active {
+    background-color: var(--vscode-button-secondaryBackground, var(--vscode-button-hoverBackground));
 }
 
 /* Loading Indicator Styles */
@@ -263,7 +273,9 @@ body {
     /* Attempting more specific header variables, fallback to editor widget if not distinct */
     --ag-header-background-color: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-editorWidget-background, #252526));
     --ag-header-foreground-color: var(--vscode-tab-activeForeground, var(--vscode-editor-foreground));
-    --ag-header-height: 30px; /* Adjust as needed */
+    --ag-header-height: 16px; /* Reduced header height */
+    --ag-header-cell-padding: 2px 4px; /* Reduced header cell padding */
+    --ag-floating-filter-height: 16px; /* Height for floating filter row */
     --ag-header-cell-hover-background-color: var(--vscode-list-hoverBackground, #2a2d2e);
     --ag-header-cell-moving-background-color: var(--vscode-list-activeSelectionBackground, #094771);
 
@@ -275,7 +287,7 @@ body {
     /* AG Grid uses '--ag-selected-row-background-color' and '--ag-selected-row-foreground-color' for selected rows */
     --ag-selected-row-background-color: var(--vscode-list-activeSelectionBackground, #094771);
     --ag-selected-row-foreground-color: var(--vscode-list-activeSelectionForeground, #ffffff);
-    --ag-row-height: 20px; /* As per current file content */
+    --ag-row-height: 16px; /* Reduced row height for thinner rows */
 
     /* Cells */
     --ag-cell-horizontal-border: 1px solid var(--ag-secondary-border-color); /* Uses the themed secondary border */
@@ -332,6 +344,11 @@ body {
 /* Specific overrides if AG Grid CSS variables are not enough */
 .ag-theme-quartz .ag-header {
     border-bottom: 1px solid var(--ag-border-color);
+}
+
+/* Apply reduced padding to header cells */
+.ag-theme-quartz .ag-header-cell {
+    padding: var(--ag-header-cell-padding);
 }
 
 /* NO LONGER DEFINING --ag-font-family directly here */
@@ -399,16 +416,23 @@ body.vscode-dark .ag-theme-quartz .ag-cell .ag-cell-value { /* Target inner span
 }
 
 
+/* Floating filter row height control */
+.ag-theme-quartz .ag-floating-filter {
+    height: var(--ag-floating-filter-height);
+    min-height: var(--ag-floating-filter-height);
+}
+
 /* Floating filter input styling */
 .ag-theme-quartz .ag-floating-filter-input input {
     background-color: var(--vscode-input-background);
     color: var(--vscode-input-foreground);
     border: 1px solid var(--vscode-input-border);
     border-radius: 2px;
-    padding: 2px 4px;
-    font-size: calc(var(--sql-preview-font-size, var(--vscode-editor-font-size, var(--vscode-font-size))) * 0.9);
-    height: calc(var(--ag-header-height) - 12px); /* Adjust based on header height & padding */
-    margin-top: 2px; /* Small adjustment */
+    padding: 1px 3px; /* Reduced padding for more compact look */
+    font-size: calc(var(--sql-preview-font-size, var(--vscode-editor-font-size, var(--vscode-font-size))) * 0.85);
+    height: calc(var(--ag-floating-filter-height) - 6px); /* Compact height based on floating filter height */
+    margin: 1px; /* Minimal margin */
+    box-sizing: border-box;
 }
 
 /* Style the row number column (#) specially if needed */
