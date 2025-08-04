@@ -18,4 +18,8 @@ module.exports = {
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov'],
   verbose: true,
+  testPathIgnorePatterns: [
+    '/node_modules/',
+    '/out/', // Ignore compiled JavaScript files
+  ],
 };
