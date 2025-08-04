@@ -9,3 +9,5 @@ node_modules
 webviews/css/tabulator_vscode.min.css
 # Tabulator JS (if downloaded locally)
 webviews/js/tabulator.min.js 
+
+coverage
