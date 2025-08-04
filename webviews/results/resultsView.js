@@ -335,7 +335,7 @@ if (typeof agGrid === 'undefined') {
         const agGridColumnDefs = columns.map(col => ({
             headerName: col.name,
             field: col.name,
-            floatingFilter: true,
+            floatingFilter: false, // Disabled floating filters to save space
             headerTooltip: `${col.name} (${col.type})`, // Show type in tooltip
             // AG Grid has built-in types for numeric columns
             type: isNumericType(col.type) ? 'numericColumn' : undefined,
@@ -352,6 +352,7 @@ if (typeof agGrid === 'undefined') {
             resizable: false,
             sortable: false,
             filter: false,
+            suppressHeaderMenuButton: true, // No menu button for row number column
             headerCheckboxSelection: false, // Optional: for row selection
             checkboxSelection: false      // Optional: for row selection
         };
@@ -380,6 +381,8 @@ if (typeof agGrid === 'undefined') {
                 filter: true,
                 minWidth: 80, // minimum width to prevent columns from becoming too small
                 // Don't set flex here - let autoSizeAllColumns() determine the width
+                suppressHeaderMenuButton: false, // Ensure menu button is available
+                menuTabs: ['filterMenuTab'], // Show only filter tab in menu
             },
             animateRows: true,
             enableCellTextSelection: true, // Allows text selection for copying
@@ -394,6 +397,8 @@ if (typeof agGrid === 'undefined') {
 
             rowSelection: 'multiple', // Enable row selection
             suppressRowClickSelection: true, // We'll handle selection via cell click on the row number column
+            suppressMenuHide: false, // Allow menu to show/hide normally
+            alwaysShowHorizontalScroll: false, // Only show horizontal scroll when needed
 
             icons: {
                 // All custom SVGs are removed.

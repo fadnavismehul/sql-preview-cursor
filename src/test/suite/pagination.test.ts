@@ -12,7 +12,7 @@ jest.mock('trino-client', () => ({
   Trino: {
     create: jest.fn(),
   },
-  BasicAuth: jest.fn(),
+  BasicAuth: jest.fn().mockImplementation((user, password) => ({ user, password })),
   Client: jest.fn(),
 }));
 
@@ -68,9 +68,9 @@ describe('Pagination Tests', () => {
       },
     } as any);
 
-    // Setup trino-client mock
+    // Setup trino-client mock - query should return a Promise that resolves to an iterator
     const mockTrinoClient = {
-      query: jest.fn().mockReturnValue({
+      query: jest.fn().mockResolvedValue({
         next: jest.fn().mockResolvedValue({
           value: mockQueryResponse,
           done: false,
@@ -79,13 +79,42 @@ describe('Pagination Tests', () => {
     };
     (Trino.create as jest.Mock).mockReturnValue(mockTrinoClient);
 
+    // Mock password storage to return a test password
+    (mockContext.secrets.get as jest.Mock).mockResolvedValue('test-password');
+
     // Activate extension
     const context = mockContext as unknown as vscode.ExtensionContext;
     await activate(context);
 
+    // Mock webview view resolution - this is crucial for the ResultsViewProvider to work
+    const mockWebviewView = {
+      webview: {
+        options: {},
+        html: '',
+        postMessage: jest.fn(),
+        onDidReceiveMessage: jest.fn(),
+        asWebviewUri: jest.fn(uri => uri),
+      },
+      show: jest.fn(),
+      onDidDispose: jest.fn(),
+    };
+
+    // Find the registered webview provider and call resolveWebviewView
+    const webviewProviderCalls = (vscode.window.registerWebviewViewProvider as jest.Mock).mock
+      .calls;
+    const webviewProviderCall = webviewProviderCalls.find(call => call[0] === 'sqlResultsView');
+    if (!webviewProviderCall) {
+      throw new Error('sqlResultsView webview provider not registered');
+    }
+    const provider = webviewProviderCall[1];
+    provider.resolveWebviewView(mockWebviewView);
+
     // Get the registered command function and call it directly
     const commandCalls = (vscode.commands.registerCommand as jest.Mock).mock.calls;
     const runQueryCall = commandCalls.find(call => call[0] === 'sql.runCursorQuery');
+    if (!runQueryCall) {
+      throw new Error('sql.runCursorQuery command not registered');
+    }
     const runQueryFunction = runQueryCall[1];
 
     // Mock text editor and document for the command
@@ -110,8 +139,8 @@ describe('Pagination Tests', () => {
     // Execute the command function directly
     await runQueryFunction();
 
-    // Wait for async operations
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // Wait longer for async operations to complete
+    await new Promise(resolve => setTimeout(resolve, 500));
 
     // Verify initial query was made
     expect(mockTrinoClient.query).toHaveBeenCalled();
@@ -174,13 +203,42 @@ describe('Pagination Tests', () => {
     };
     (Trino.create as jest.Mock).mockReturnValue(mockTrinoClient);
 
+    // Mock password storage to return a test password
+    (mockContext.secrets.get as jest.Mock).mockResolvedValue('test-password');
+
     // Activate extension
     const context = mockContext as unknown as vscode.ExtensionContext;
     await activate(context);
 
+    // Mock webview view resolution - this is crucial for the ResultsViewProvider to work
+    const mockWebviewView = {
+      webview: {
+        options: {},
+        html: '',
+        postMessage: jest.fn(),
+        onDidReceiveMessage: jest.fn(),
+        asWebviewUri: jest.fn(uri => uri),
+      },
+      show: jest.fn(),
+      onDidDispose: jest.fn(),
+    };
+
+    // Find the registered webview provider and call resolveWebviewView
+    const webviewProviderCalls = (vscode.window.registerWebviewViewProvider as jest.Mock).mock
+      .calls;
+    const webviewProviderCall = webviewProviderCalls.find(call => call[0] === 'sqlResultsView');
+    if (!webviewProviderCall) {
+      throw new Error('sqlResultsView webview provider not registered');
+    }
+    const provider = webviewProviderCall[1];
+    provider.resolveWebviewView(mockWebviewView);
+
     // Get the registered command function and call it directly
     const commandCalls = (vscode.commands.registerCommand as jest.Mock).mock.calls;
     const runQueryCall = commandCalls.find(call => call[0] === 'sql.runCursorQuery');
+    if (!runQueryCall) {
+      throw new Error('sql.runCursorQuery command not registered');
+    }
     const runQueryFunction = runQueryCall[1];
 
     // Mock text editor and document for the command
@@ -205,8 +263,8 @@ describe('Pagination Tests', () => {
     // Execute the command function directly
     await runQueryFunction();
 
-    // Wait for async operations
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // Wait longer for async operations to complete
+    await new Promise(resolve => setTimeout(resolve, 500));
 
     // Verify we only fetched one additional page
     expect(mockedAxios.get).toHaveBeenCalledTimes(1);
@@ -242,13 +300,42 @@ describe('Pagination Tests', () => {
     // Spy on vscode.window.showWarningMessage
     const showWarningMessage = jest.spyOn(vscode.window, 'showWarningMessage');
 
+    // Mock password storage to return a test password
+    (mockContext.secrets.get as jest.Mock).mockResolvedValue('test-password');
+
     // Activate extension
     const context = mockContext as unknown as vscode.ExtensionContext;
     await activate(context);
 
+    // Mock webview view resolution - this is crucial for the ResultsViewProvider to work
+    const mockWebviewView = {
+      webview: {
+        options: {},
+        html: '',
+        postMessage: jest.fn(),
+        onDidReceiveMessage: jest.fn(),
+        asWebviewUri: jest.fn(uri => uri),
+      },
+      show: jest.fn(),
+      onDidDispose: jest.fn(),
+    };
+
+    // Find the registered webview provider and call resolveWebviewView
+    const webviewProviderCalls = (vscode.window.registerWebviewViewProvider as jest.Mock).mock
+      .calls;
+    const webviewProviderCall = webviewProviderCalls.find(call => call[0] === 'sqlResultsView');
+    if (!webviewProviderCall) {
+      throw new Error('sqlResultsView webview provider not registered');
+    }
+    const provider = webviewProviderCall[1];
+    provider.resolveWebviewView(mockWebviewView);
+
     // Get the registered command function and call it directly
     const commandCalls = (vscode.commands.registerCommand as jest.Mock).mock.calls;
     const runQueryCall = commandCalls.find(call => call[0] === 'sql.runCursorQuery');
+    if (!runQueryCall) {
+      throw new Error('sql.runCursorQuery command not registered');
+    }
     const runQueryFunction = runQueryCall[1];
 
     // Mock text editor and document for the command
@@ -273,8 +360,8 @@ describe('Pagination Tests', () => {
     // Execute the command function directly
     await runQueryFunction();
 
-    // Wait for async operations
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // Wait longer for async operations to complete
+    await new Promise(resolve => setTimeout(resolve, 500));
 
     // Verify error handling
     expect(showWarningMessage).toHaveBeenCalledWith(
