@@ -269,15 +269,14 @@ body {
     --ag-secondary-border-color: var(--vscode-tree-indentGuidesStroke, var(--vscode-editorGroup-border, #585858)); /* For cell borders, panel separators */
     --ag-row-border-color: var(--vscode-editorRuler-foreground, var(--vscode-editorWidget-border, #454545)); /* Border between rows */
 
-    /* Header */
-    /* Attempting more specific header variables, fallback to editor widget if not distinct */
-    --ag-header-background-color: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-editorWidget-background, #252526));
+    /* Header - Using standard AG Grid theme parameters only */
+    --ag-header-background-color: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-editorWidget-background));
     --ag-header-foreground-color: var(--vscode-tab-activeForeground, var(--vscode-editor-foreground));
-    --ag-header-height: 16px; /* Reduced header height */
-    --ag-header-cell-padding: 2px 4px; /* Reduced header cell padding */
-    --ag-floating-filter-height: 16px; /* Height for floating filter row */
-    --ag-header-cell-hover-background-color: var(--vscode-list-hoverBackground, #2a2d2e);
-    --ag-header-cell-moving-background-color: var(--vscode-list-activeSelectionBackground, #094771);
+    --ag-header-text-color: var(--vscode-tab-activeForeground, var(--vscode-editor-foreground));
+    --ag-header-height: 32px; /* Standard AG Grid header height */
+    --ag-header-cell-hover-background-color: var(--vscode-list-hoverBackground);
+    --ag-header-cell-moving-background-color: var(--vscode-list-activeSelectionBackground);
+    --ag-header-border-color: var(--ag-border-color); /* Header border using theme parameter */
 
     /* Rows */
     --ag-row-background-color: var(--vscode-editor-background); /* Base for all rows */
@@ -324,12 +323,13 @@ body {
     /* --ag-status-bar-background-color: var(--vscode-statusBar-background); */
     /* --ag-status-bar-foreground-color: var(--vscode-statusBar-foreground); */
 
-    /* Icons - AG Grid uses SVG icons. Their color can be controlled via fill */
+    /* Icons - AG Grid theme parameters for icon colors */
     --ag-icon-color: var(--vscode-icon-foreground);
     --ag-icon-disabled-color: var(--vscode-disabledForeground);
-
-    /* Ensure menu icons are specifically targeted for visibility */
-    --ag-header-menu-button-display: inline-block; /* Ensure the button container is shown */
+    
+    /* Header menu button - use AG Grid theme parameters only */
+    --ag-header-cell-menu-button-color: var(--vscode-icon-foreground);
+    --ag-header-cell-menu-button-hover-color: var(--vscode-icon-foreground);
 
     /* Range Selection */
     --ag-range-selection-border-color: var(--vscode-editor-selectionBackground);
@@ -341,15 +341,10 @@ body {
 
 }
 
-/* Specific overrides if AG Grid CSS variables are not enough */
-.ag-theme-quartz .ag-header {
-    border-bottom: 1px solid var(--ag-border-color);
-}
+/* Removed all CSS class overrides - using only AG Grid theme parameters */
 
-/* Apply reduced padding to header cells */
-.ag-theme-quartz .ag-header-cell {
-    padding: var(--ag-header-cell-padding);
-}
+/* Let AG Grid handle the header cell layout completely */
+/* Completely removed header cell layout overrides - let AG Grid handle everything */
 
 /* NO LONGER DEFINING --ag-font-family directly here */
 /* It will be defined in theme-specific blocks */
@@ -415,25 +410,7 @@ body.vscode-dark .ag-theme-quartz .ag-cell .ag-cell-value { /* Target inner span
     text-align: right;
 }
 
-
-/* Floating filter row height control */
-.ag-theme-quartz .ag-floating-filter {
-    height: var(--ag-floating-filter-height);
-    min-height: var(--ag-floating-filter-height);
-}
-
-/* Floating filter input styling */
-.ag-theme-quartz .ag-floating-filter-input input {
-    background-color: var(--vscode-input-background);
-    color: var(--vscode-input-foreground);
-    border: 1px solid var(--vscode-input-border);
-    border-radius: 2px;
-    padding: 1px 3px; /* Reduced padding for more compact look */
-    font-size: calc(var(--sql-preview-font-size, var(--vscode-editor-font-size, var(--vscode-font-size))) * 0.85);
-    height: calc(var(--ag-floating-filter-height) - 6px); /* Compact height based on floating filter height */
-    margin: 1px; /* Minimal margin */
-    box-sizing: border-box;
-}
+/* Completely removed CSS overrides - let AG Grid theme parameters handle everything */
 
 /* Style the row number column (#) specially if needed */
 .ag-theme-quartz .ag-pinned-left-cols-container .ag-cell[col-id="0"] { /* Assuming row number is first after pinning */
