@@ -170,7 +170,7 @@ body {
     font-style: italic;
 }
 
-.export-button {
+.export-button, .export-full-button {
     background-color: var(--vscode-button-background);
     color: var(--vscode-button-foreground);
     border: 1px solid var(--vscode-button-border, transparent);
@@ -184,18 +184,20 @@ body {
     transition: background-color 0.1s ease-in-out;
 }
 
-.export-button:hover {
+.export-button:hover, .export-full-button:hover {
     background-color: var(--vscode-button-hoverBackground);
 }
 
-.export-button:focus {
+.export-button:focus, .export-full-button:focus {
     outline: 1px solid var(--vscode-focusBorder);
     outline-offset: 2px;
 }
 
-.export-button:active {
+.export-button:active, .export-full-button:active {
     background-color: var(--vscode-button-secondaryBackground, var(--vscode-button-hoverBackground));
 }
+
+/* Both export buttons now have the same primary button styling */
 
 /* Loading Indicator Styles */
 .loading {

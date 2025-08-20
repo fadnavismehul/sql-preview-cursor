@@ -5,6 +5,7 @@ import { PrestoCodeLensProvider } from './PrestoCodeLensProvider'; // Corrected 
 import { ResultsViewProvider } from './resultsViewProvider';
 import axios from 'axios'; // Import axios
 import * as https from 'https'; // Import https for custom agent
+import * as fs from 'fs'; // Import fs for file operations
 
 let resultsViewProvider: ResultsViewProvider | undefined;
 
@@ -589,13 +590,189 @@ export function activate(context: vscode.ExtensionContext) {
     }
   );
 
+  // Register the command to export full results
+  const exportFullResultsCommand = vscode.commands.registerCommand(
+    'sql.exportFullResults',
+    async (options: { query: string; filePath: string; tabId: string }) => {
+      await executeFullExport(context, options.query, options.filePath);
+    }
+  );
+
   context.subscriptions.push(
     runQueryCommand,
     setPasswordCommand,
     setPasswordFromSettingsCommand,
     clearPasswordCommand,
+    exportFullResultsCommand,
     configListener
   );
+}
+
+/**
+ * Executes a query to get full results and exports them to CSV
+ */
+async function executeFullExport(
+  context: vscode.ExtensionContext,
+  query: string,
+  filePath: string
+): Promise<void> {
+  try {
+    // Show progress indicator
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: 'Exporting full query results...',
+        cancellable: false,
+      },
+      async progress => {
+        progress.report({ increment: 0, message: 'Setting up connection...' });
+
+        // Get configuration
+        const config = vscode.workspace.getConfiguration('sqlPreview');
+        const host = config.get<string>('host', 'localhost');
+        const port = config.get<number>('port', 8080);
+        const user = config.get<string>('user', 'user');
+        const catalog = config.get<string>('catalog') || undefined;
+        const schema = config.get<string>('schema') || undefined;
+        const ssl = config.get<boolean>('ssl', false);
+        const sslVerify = config.get<boolean>('sslVerify', true);
+
+        // Get password securely from secret storage
+        const password = await getStoredPassword(context);
+
+        // Setup Authentication
+        let basicAuthHeader: string | undefined;
+        if (password) {
+          basicAuthHeader = 'Basic ' + Buffer.from(`${user}:${password}`).toString('base64');
+        }
+
+        // Setup Client Options
+        const clientOptions: {
+          server: string;
+          user: string;
+          catalog: string;
+          schema: string;
+          ssl?: { rejectUnauthorized: boolean };
+          auth?: BasicAuth;
+        } = {
+          server: `${ssl ? 'https' : 'http'}://${host}:${port}`,
+          user: user,
+          catalog: catalog || 'hive',
+          schema: schema || 'default',
+          ...(ssl ? { ssl: { rejectUnauthorized: sslVerify } } : {}),
+        };
+
+        if (password) {
+          clientOptions.auth = new BasicAuth(user, password);
+        }
+
+        progress.report({ increment: 20, message: 'Executing query...' });
+
+        // Create client and execute query
+        const client = Trino.create(clientOptions);
+        const queryIter = await client.query(query);
+
+        const allRows: unknown[][] = [];
+        let columns: Array<{ name: string; type: string }> | undefined;
+        let rawResultObject: TrinoQueryResponse;
+
+        // Fetch first page
+        const firstIteration = await queryIter.next();
+        rawResultObject = firstIteration.value;
+
+        if (rawResultObject.error) {
+          throw new Error(`Query failed: ${rawResultObject.error.message || 'Unknown error'}`);
+        }
+
+        if (rawResultObject.columns) {
+          columns = rawResultObject.columns;
+        }
+
+        if (rawResultObject.data) {
+          allRows.push(...rawResultObject.data);
+        }
+
+        // Fetch additional pages if they exist
+        while (rawResultObject.nextUri && !firstIteration.done) {
+          progress.report({
+            increment: Math.min(60, 20 + (allRows.length / 1000) * 20),
+            message: `Fetching results... (${allRows.length} rows)`,
+          });
+
+          try {
+            const nextPageResponse = await axios.get(rawResultObject.nextUri, {
+              headers: basicAuthHeader ? { Authorization: basicAuthHeader } : {},
+              ...(ssl ? { httpsAgent: createHttpsAgent(sslVerify) } : {}),
+            });
+
+            rawResultObject = nextPageResponse.data as TrinoQueryResponse;
+
+            if (rawResultObject.error) {
+              throw new Error(
+                `Query failed on pagination: ${rawResultObject.error.message || 'Unknown error'}`
+              );
+            }
+
+            if (rawResultObject.data) {
+              allRows.push(...rawResultObject.data);
+            }
+          } catch (error: unknown) {
+            if (error instanceof Error) {
+              throw new Error(`Pagination request failed: ${error.message}`);
+            }
+            throw error;
+          }
+        }
+
+        progress.report({ increment: 60, message: 'Generating CSV...' });
+
+        if (!columns) {
+          throw new Error('No columns returned from query');
+        }
+
+        // Generate CSV content
+        const csvContent = generateCSV(columns, allRows);
+
+        progress.report({ increment: 80, message: 'Writing file...' });
+
+        // Write to file
+        fs.writeFileSync(filePath, csvContent, 'utf8');
+
+        progress.report({ increment: 100, message: 'Export complete!' });
+      }
+    );
+
+    vscode.window.showInformationMessage(
+      `Successfully exported ${query.length > 50 ? query.substring(0, 50) + '...' : query} results to ${filePath}`
+    );
+  } catch (error) {
+    vscode.window.showErrorMessage(`Failed to export full results: ${error}`);
+  }
+}
+
+/**
+ * Generates CSV content from columns and rows
+ */
+function generateCSV(columns: Array<{ name: string; type: string }>, rows: unknown[][]): string {
+  let csvContent = '';
+
+  // Add headers
+  const headers = columns.map(col => col.name);
+  csvContent += headers.map(header => `"${String(header).replace(/"/g, '""')}"`).join(',') + '\r\n';
+
+  // Add data rows
+  for (const row of rows) {
+    const csvRow = row.map(value => {
+      if (value === null || typeof value === 'undefined') {
+        return '';
+      }
+      // Escape double quotes and ensure value is stringified
+      return `"${String(value).replace(/"/g, '""')}"`;
+    });
+    csvContent += csvRow.join(',') + '\r\n';
+  }
+
+  return csvContent;
 }
 
 /**

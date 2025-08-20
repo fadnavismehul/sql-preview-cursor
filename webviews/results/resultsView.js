@@ -141,7 +141,8 @@ if (typeof agGrid === 'undefined') {
                     <span class="truncation-warning" style="display: none; color: var(--vscode-descriptionForeground); margin-left: 10px;">(Results limited)</span>
                 </div>
                 <div>
-                    <button class="export-button" style="display: none;" title="Export full results to CSV">Export CSV</button> 
+                    <button class="export-button" style="display: none;" title="Export currently displayed results to CSV">Export Displayed</button>
+                    <button class="export-full-button" style="display: none; margin-left: 5px;" title="Export all query results to CSV">Export Full Results</button> 
                 </div>
             </div>
             <div class="error-container error-message" style="display: none;"></div>
@@ -255,7 +256,8 @@ if (typeof agGrid === 'undefined') {
             statusMessageElement: tabContent.querySelector('.status-message'),
             rowCountInfoElement: tabContent.querySelector('.row-count-info'),
             truncationWarningElement: tabContent.querySelector('.truncation-warning'),
-            exportButton: tabContent.querySelector('.export-button')
+            exportButton: tabContent.querySelector('.export-button'),
+            exportFullButton: tabContent.querySelector('.export-full-button')
         };
     }
 
@@ -507,6 +509,24 @@ if (typeof agGrid === 'undefined') {
                 }
             };
         }
+
+        if (elements.exportFullButton) {
+            // Only show "Export Full Results" button when data is actually truncated
+            elements.exportFullButton.style.display = (totalRowsInFirstBatch > 0 && wasTruncated) ? 'inline-block' : 'none';
+            elements.exportFullButton.onclick = () => {
+                if (tab.data && tab.data.columns && tab.data.rows) {
+                    // Request full export from the extension
+                    vscode.postMessage({ 
+                        command: 'exportFullResults', 
+                        tabId: tab.id,
+                        query: tab.query,
+                        wasTruncated: tab.data.wasTruncated
+                    });
+                } else {
+                    vscode.postMessage({ command: 'alert', text: 'No data available for export.' });
+                }
+            };
+        }
     }
 
     // --- Grid Keydown Handler for Custom Copy ---
@@ -606,6 +626,8 @@ if (typeof agGrid === 'undefined') {
                       elements.rowCountInfoElement.textContent = ''; 
                       if (elements.truncationWarningElement) elements.truncationWarningElement.style.display = 'none';
                       if (elements.exportButton) elements.exportButton.style.display = 'none';
+                    if (elements.exportFullButton) elements.exportFullButton.style.display = 'none';
+                      if (elements.exportFullButton) elements.exportFullButton.style.display = 'none';
                  }
             }
         }
@@ -737,6 +759,7 @@ if (typeof agGrid === 'undefined') {
                     if (elements.rowCountInfoElement) elements.rowCountInfoElement.textContent = '';
                     if (elements.truncationWarningElement) elements.truncationWarningElement.style.display = 'none';
                     if (elements.exportButton) elements.exportButton.style.display = 'none';
+                    if (elements.exportFullButton) elements.exportFullButton.style.display = 'none';
                 }
                 break;
                 
@@ -752,6 +775,7 @@ if (typeof agGrid === 'undefined') {
                     if (elements.rowCountInfoElement) elements.rowCountInfoElement.textContent = '';
                     if (elements.truncationWarningElement) elements.truncationWarningElement.style.display = 'none';
                     if (elements.exportButton) elements.exportButton.style.display = 'none';
+                    if (elements.exportFullButton) elements.exportFullButton.style.display = 'none';
                     if (elements.errorContainer) elements.errorContainer.style.display = 'none';
                 }
                 break;

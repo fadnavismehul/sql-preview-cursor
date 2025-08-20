@@ -74,6 +74,9 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
         case 'showError':
           vscode.window.showErrorMessage(data.text);
           return;
+        case 'exportFullResults':
+          this.handleFullResultsExport(data);
+          return;
         // Add more cases to handle messages from webview JS
       }
     });
@@ -310,6 +313,61 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
                 <script nonce="${nonce}" src="${scriptUri}"></script>
             </body>
             </html>`;
+  }
+
+  /** Handles full results export request from webview */
+  private async handleFullResultsExport(data: {
+    tabId: string;
+    query: string;
+    wasTruncated: boolean;
+  }) {
+    try {
+      if (!data.query) {
+        vscode.window.showErrorMessage('No query available for export.');
+        return;
+      }
+
+      if (!data.wasTruncated) {
+        // If data wasn't truncated, we already have all the data
+        vscode.window.showInformationMessage(
+          'All query results are already displayed. Use "Export Displayed" instead.'
+        );
+        return;
+      }
+
+      // Show info that we're about to execute the full query
+      const proceed = await vscode.window.showInformationMessage(
+        'This will re-execute the query to fetch all results for export. This may take some time for large result sets. Continue?',
+        'Yes',
+        'Cancel'
+      );
+
+      if (proceed !== 'Yes') {
+        return;
+      }
+
+      // Show a save dialog to let user choose where to save the CSV
+      const saveUri = await vscode.window.showSaveDialog({
+        defaultUri: vscode.Uri.file('query_results.csv'),
+        filters: {
+          'CSV Files': ['csv'],
+          'All Files': ['*'],
+        },
+      });
+
+      if (!saveUri) {
+        return; // User cancelled
+      }
+
+      // Execute the full export by sending a command to the extension
+      vscode.commands.executeCommand('sql.exportFullResults', {
+        query: data.query,
+        filePath: saveUri.fsPath,
+        tabId: data.tabId,
+      });
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to export full results: ${error}`);
+    }
   }
 }
 
