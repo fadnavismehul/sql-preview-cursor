@@ -141,7 +141,9 @@ if (typeof agGrid === 'undefined') {
                     <span class="truncation-warning" style="display: none; color: var(--vscode-descriptionForeground); margin-left: 10px;">(Results limited)</span>
                 </div>
                 <div>
-                    <button class="export-button" style="display: none;" title="Export currently displayed results to CSV">Export Displayed</button>
+                    <button class="copy-button" style="display: none;" title="Copy first 5 rows to clipboard as CSV (includes headers)">Copy First 5 Rows</button>
+                    <button class="copy-all-button" style="display: none; margin-left: 5px;" title="Copy all displayed results to clipboard as CSV">Copy All</button>
+                    <button class="export-button" style="display: none; margin-left: 5px;" title="Export currently displayed results to CSV">Export Displayed</button>
                     <button class="export-full-button" style="display: none; margin-left: 5px;" title="Export all query results to CSV">Export Full Results</button> 
                 </div>
             </div>
@@ -256,6 +258,8 @@ if (typeof agGrid === 'undefined') {
             statusMessageElement: tabContent.querySelector('.status-message'),
             rowCountInfoElement: tabContent.querySelector('.row-count-info'),
             truncationWarningElement: tabContent.querySelector('.truncation-warning'),
+            copyButton: tabContent.querySelector('.copy-button'),
+            copyAllButton: tabContent.querySelector('.copy-all-button'),
             exportButton: tabContent.querySelector('.export-button'),
             exportFullButton: tabContent.querySelector('.export-full-button')
         };
@@ -266,19 +270,34 @@ if (typeof agGrid === 'undefined') {
         vscode.postMessage({ command: 'createNewTab' });
     });
 
-    // --- Helper function for CSV Export ---
+    // --- Enhanced Copy Functions ---
+    
+    // Export selected rows to various formats
     function exportSelectedRowsToCsv(gridApi) {
-        const selectedNodes = gridApi.getSelectedNodes();
-        if (!selectedNodes || selectedNodes.length === 0) {
-            // vscode.postMessage({ command: 'showInfo', text: 'No rows selected for copying.' });
-            return null;
+        return exportDataToFormat(gridApi, 'csv', true); // only selected rows
+    }
+
+    // Export data to different formats
+    function exportDataToFormat(gridApi, format = 'csv', selectedOnly = true) {
+        let nodes;
+        
+        if (selectedOnly) {
+            nodes = gridApi.getSelectedNodes();
+            if (!nodes || nodes.length === 0) {
+                return null;
+            }
+        } else {
+            // Get all displayed rows (respecting filters and pagination)
+            nodes = [];
+            gridApi.forEachNodeAfterFilterAndSort(node => {
+                nodes.push(node);
+            });
         }
 
         // Get all displayed columns that have a 'field' (i.e., are data columns, not the row number column)
         const displayedDataColumns = gridApi.getAllDisplayedColumns().filter(col => col.getColDef().field);
 
         if (!displayedDataColumns.length) {
-            // vscode.postMessage({ command: 'showInfo', text: 'No data columns to export.' });
             return null; 
         }
 
@@ -288,25 +307,182 @@ if (typeof agGrid === 'undefined') {
             return colDef.headerName || colDef.field; // Use headerName if available, otherwise field
         });
 
-        let csvContent = "";
-        // Add headers
-        csvContent += headerRow.map(header => `"${String(header).replace(/"/g, '""')}"`).join(',') + '\\r\\n';
-
-        // Create data rows
-        selectedNodes.forEach(node => {
-            const rowData = [];
-            displayedDataColumns.forEach(column => {
-                const colDef = column.getColDef(); // Field is guaranteed to exist due to filter above
-                let value = node.data[colDef.field];
-                if (value === null || typeof value === 'undefined') {
-                    value = '';
-                }
-                // Escape double quotes and ensure value is stringified
-                rowData.push(`"${String(value).replace(/"/g, '""')}"`);
+        if (format === 'json') {
+            // Export as JSON array
+            const jsonData = nodes.map(node => {
+                const rowObj = {};
+                displayedDataColumns.forEach(column => {
+                    const colDef = column.getColDef();
+                    const fieldName = colDef.headerName || colDef.field;
+                    let value = node.data[colDef.field];
+                    if (value === null || typeof value === 'undefined') {
+                        value = null;
+                    }
+                    rowObj[fieldName] = value;
+                });
+                return rowObj;
             });
-            csvContent += rowData.join(',') + '\\r\\n';
+            return JSON.stringify(jsonData, null, 2);
+            
+        } else if (format === 'tsv') {
+            // Export as Tab-Separated Values
+            let tsvContent = "";
+            // Add headers
+            tsvContent += headerRow.join('\t') + '\n';
+            
+            // Create data rows
+            nodes.forEach(node => {
+                const rowData = [];
+                displayedDataColumns.forEach(column => {
+                    const colDef = column.getColDef();
+                    let value = node.data[colDef.field];
+                    if (value === null || typeof value === 'undefined') {
+                        value = '';
+                    }
+                    // Escape tabs and newlines for TSV
+                    rowData.push(String(value).replace(/\t/g, ' ').replace(/\r\n|\r|\n/g, ' '));
+                });
+                tsvContent += rowData.join('\t') + '\n';
+            });
+            return tsvContent;
+            
+        } else {
+            // Default to CSV format
+            let csvContent = "";
+            // Add headers
+            csvContent += headerRow.map(header => `"${String(header).replace(/"/g, '""')}"`).join(',') + '\n';
+
+            // Create data rows
+            nodes.forEach(node => {
+                const rowData = [];
+                displayedDataColumns.forEach(column => {
+                    const colDef = column.getColDef();
+                    let value = node.data[colDef.field];
+                    if (value === null || typeof value === 'undefined') {
+                        value = '';
+                    }
+                    // Escape double quotes and ensure value is stringified
+                    rowData.push(`"${String(value).replace(/"/g, '""')}"`);
+                });
+                csvContent += rowData.join(',') + '\n';
+            });
+            return csvContent;
+        }
+    }
+
+    // Copy first N rows to clipboard
+    function copyFirstNRows(gridApi, rowCount = 5, format = 'csv') {
+        // Get all displayed rows (respecting filters and sorting)
+        const nodes = [];
+        gridApi.forEachNodeAfterFilterAndSort((node, index) => {
+            if (index < rowCount) {
+                nodes.push(node);
+            }
         });
-        return csvContent;
+
+        if (!nodes || nodes.length === 0) {
+            vscode.postMessage({ command: 'showInfo', text: 'No data available for copying.' });
+            return false;
+        }
+
+        // Get all displayed columns that have a 'field' (i.e., are data columns, not the row number column)
+        const displayedDataColumns = gridApi.getAllDisplayedColumns().filter(col => col.getColDef().field);
+
+        if (!displayedDataColumns.length) {
+            vscode.postMessage({ command: 'showInfo', text: 'No data columns available for copying.' });
+            return false;
+        }
+
+        // Create header row from displayed data columns
+        const headerRow = displayedDataColumns.map(column => {
+            const colDef = column.getColDef();
+            return colDef.headerName || colDef.field;
+        });
+
+        let content = "";
+        if (format === 'json') {
+            // Export as JSON array
+            const jsonData = nodes.map(node => {
+                const rowObj = {};
+                displayedDataColumns.forEach(column => {
+                    const colDef = column.getColDef();
+                    const fieldName = colDef.headerName || colDef.field;
+                    let value = node.data[colDef.field];
+                    if (value === null || typeof value === 'undefined') {
+                        value = null;
+                    }
+                    rowObj[fieldName] = value;
+                });
+                return rowObj;
+            });
+            content = JSON.stringify(jsonData, null, 2);
+        } else if (format === 'tsv') {
+            // Export as Tab-Separated Values
+            content += headerRow.join('\t') + '\n';
+            nodes.forEach(node => {
+                const rowData = [];
+                displayedDataColumns.forEach(column => {
+                    const colDef = column.getColDef();
+                    let value = node.data[colDef.field];
+                    if (value === null || typeof value === 'undefined') {
+                        value = '';
+                    }
+                    rowData.push(String(value).replace(/\t/g, ' ').replace(/\r\n|\r|\n/g, ' '));
+                });
+                content += rowData.join('\t') + '\n';
+            });
+        } else {
+            // Default to CSV format
+            content += headerRow.map(header => `"${String(header).replace(/"/g, '""')}"`).join(',') + '\n';
+            nodes.forEach(node => {
+                const rowData = [];
+                displayedDataColumns.forEach(column => {
+                    const colDef = column.getColDef();
+                    let value = node.data[colDef.field];
+                    if (value === null || typeof value === 'undefined') {
+                        value = '';
+                    }
+                    rowData.push(`"${String(value).replace(/"/g, '""')}"`);
+                });
+                content += rowData.join(',') + '\n';
+            });
+        }
+
+        return navigator.clipboard.writeText(content)
+            .then(() => {
+                const actualCount = nodes.length;
+                const formatName = format.toUpperCase();
+                vscode.postMessage({ command: 'showInfo', text: `First ${actualCount} row${actualCount !== 1 ? 's' : ''} copied as ${formatName}.` });
+                return true;
+            })
+            .catch(err => {
+                console.error('Failed to copy to clipboard: ', err);
+                vscode.postMessage({ command: 'showError', text: 'Failed to copy to clipboard. See console for details.' });
+                return false;
+            });
+    }
+
+    // Copy data to clipboard with format detection
+    function copyToClipboard(gridApi, selectedOnly = true, format = 'csv') {
+        const data = exportDataToFormat(gridApi, format, selectedOnly);
+        if (!data) {
+            const message = selectedOnly ? 'No rows selected for copying.' : 'No data available for copying.';
+            vscode.postMessage({ command: 'showInfo', text: message });
+            return false;
+        }
+
+        return navigator.clipboard.writeText(data)
+            .then(() => {
+                const rowType = selectedOnly ? 'selected rows' : 'all displayed rows';
+                const formatName = format.toUpperCase();
+                vscode.postMessage({ command: 'showInfo', text: `${rowType} copied as ${formatName}.` });
+                return true;
+            })
+            .catch(err => {
+                console.error('Failed to copy to clipboard: ', err);
+                vscode.postMessage({ command: 'showError', text: 'Failed to copy to clipboard. See console for details.' });
+                return false;
+            });
     }
 
     // --- Initialize Grid Function ---
@@ -479,6 +655,16 @@ if (typeof agGrid === 'undefined') {
                 if (params.colDef.headerName === '#') {
                     params.node.setSelected(!params.node.isSelected());
                 }
+            },
+
+            // Update copy button text when filters change
+            onFilterChanged: () => {
+                updateCopyAllButtonText(tabId);
+            },
+
+            // Update copy button text when sorting changes
+            onSortChanged: () => {
+                updateCopyAllButtonText(tabId);
             }
         };
 
@@ -499,6 +685,35 @@ if (typeof agGrid === 'undefined') {
         // Save state after updating tab data
         saveState();
 
+        // Setup Copy First 5 Rows button
+        if (elements.copyButton) {
+            elements.copyButton.style.display = (totalRowsInFirstBatch > 0) ? 'inline-block' : 'none';
+            elements.copyButton.onclick = () => {
+                if (tab.gridApi) {
+                    copyFirstNRows(tab.gridApi, 5, 'csv'); // Copy first 5 rows as CSV
+                } else {
+                    vscode.postMessage({ command: 'alert', text: 'Grid not available for copying.' });
+                }
+            };
+        }
+
+        // Setup Copy All button
+        if (elements.copyAllButton) {
+            elements.copyAllButton.style.display = (totalRowsInFirstBatch > 0) ? 'inline-block' : 'none';
+            
+            // Update button text with row count
+            updateCopyAllButtonText(tab.id);
+            
+            elements.copyAllButton.onclick = () => {
+                if (tab.gridApi) {
+                    copyToClipboard(tab.gridApi, false, 'csv'); // Copy all displayed rows as CSV
+                } else {
+                    vscode.postMessage({ command: 'alert', text: 'Grid not available for copying.' });
+                }
+            };
+        }
+
+        // Setup Export button
         if (elements.exportButton) {
              elements.exportButton.style.display = (totalRowsInFirstBatch > 0) ? 'inline-block' : 'none';
              elements.exportButton.onclick = () => {
@@ -510,6 +725,7 @@ if (typeof agGrid === 'undefined') {
             };
         }
 
+        // Setup Export Full Results button
         if (elements.exportFullButton) {
             // Only show "Export Full Results" button when data is actually truncated
             elements.exportFullButton.style.display = (totalRowsInFirstBatch > 0 && wasTruncated) ? 'inline-block' : 'none';
@@ -544,20 +760,24 @@ if (typeof agGrid === 'undefined') {
                 const isGridFocused = elements && elements.gridElement.contains(activeElement) && activeElement.tagName !== 'INPUT' && activeElement.tagName !== 'TEXTAREA';
 
                 if (isGridFocused) {
-                    const csvData = exportSelectedRowsToCsv(tab.gridApi);
-                    if (csvData) {
-                        navigator.clipboard.writeText(csvData)
-                            .then(() => {
-                                console.log('Selected rows copied to clipboard as CSV with headers.');
-                                // Optional: provide feedback to the user e.g. via a temporary message
-                                vscode.postMessage({ command: 'showInfo', text: 'Selected rows copied as CSV.' });
-                            })
-                            .catch(err => {
-                                console.error('Failed to copy selected rows to clipboard: ', err);
-                                vscode.postMessage({ command: 'showError', text: 'Failed to copy as CSV. See console for details.' });
-                            });
-                        event.preventDefault(); // Prevent default copy action of AG Grid / browser
+                    // Enhanced keyboard copy with format support
+                    // Default to CSV, but could be extended to detect modifier keys for different formats
+                    // e.g., Ctrl+Shift+C for JSON, Ctrl+Alt+C for TSV
+                    let format = 'csv';
+                    if (event.shiftKey) {
+                        format = 'json';
+                    } else if (event.altKey) {
+                        format = 'tsv';
                     }
+                    
+                    // Check if any rows are selected, if so copy selected, otherwise copy first 5
+                    const selectedNodes = tab.gridApi.getSelectedNodes();
+                    if (selectedNodes && selectedNodes.length > 0) {
+                        copyToClipboard(tab.gridApi, true, format); // Copy selected rows
+                    } else {
+                        copyFirstNRows(tab.gridApi, 5, format); // Copy first 5 rows
+                    }
+                    event.preventDefault(); // Prevent default copy action of AG Grid / browser
                 }
             }
         }
@@ -578,6 +798,41 @@ if (typeof agGrid === 'undefined') {
         }
         if (elements.truncationWarningElement) {
              elements.truncationWarningElement.style.display = wasTruncated ? 'inline' : 'none';
+        }
+        
+        // Update copy all button text when row count changes
+        updateCopyAllButtonText(tabId);
+    }
+
+    function updateCopyAllButtonText(tabId) {
+        const tab = tabs.find(t => t.id === tabId);
+        const elements = getTabElements(tabId);
+        
+        if (!tab || !tab.gridApi || !elements || !elements.copyAllButton) {
+            return;
+        }
+
+        // Count rows that would be copied (all displayed rows after filters/sorting)
+        let rowCount = 0;
+        try {
+            tab.gridApi.forEachNodeAfterFilterAndSort(() => {
+                rowCount++;
+            });
+        } catch (e) {
+            // Fallback to getting displayed row count
+            console.warn('Error counting filtered rows, using fallback method:', e);
+            rowCount = tab.gridApi.getDisplayedRowCount();
+        }
+
+        // Update button text
+        const buttonText = rowCount > 0 ? `Copy ${rowCount}` : 'Copy All';
+        elements.copyAllButton.textContent = buttonText;
+        
+        // Update tooltip as well
+        if (rowCount > 0) {
+            elements.copyAllButton.title = `Copy all ${rowCount} displayed results to clipboard as CSV (includes headers, respects current filters and sorting)`;
+        } else {
+            elements.copyAllButton.title = `Copy all displayed results to clipboard as CSV (includes headers, respects current filters and sorting)`;
         }
     }
     
@@ -625,8 +880,9 @@ if (typeof agGrid === 'undefined') {
                  if (message.type !== 'resultData') {
                       elements.rowCountInfoElement.textContent = ''; 
                       if (elements.truncationWarningElement) elements.truncationWarningElement.style.display = 'none';
+                      if (elements.copyButton) elements.copyButton.style.display = 'none';
+                      if (elements.copyAllButton) elements.copyAllButton.style.display = 'none';
                       if (elements.exportButton) elements.exportButton.style.display = 'none';
-                    if (elements.exportFullButton) elements.exportFullButton.style.display = 'none';
                       if (elements.exportFullButton) elements.exportFullButton.style.display = 'none';
                  }
             }
@@ -758,6 +1014,8 @@ if (typeof agGrid === 'undefined') {
                     if (elements.statusMessageElement) elements.statusMessageElement.textContent = 'Error';
                     if (elements.rowCountInfoElement) elements.rowCountInfoElement.textContent = '';
                     if (elements.truncationWarningElement) elements.truncationWarningElement.style.display = 'none';
+                    if (elements.copyButton) elements.copyButton.style.display = 'none';
+                    if (elements.copyAllButton) elements.copyAllButton.style.display = 'none';
                     if (elements.exportButton) elements.exportButton.style.display = 'none';
                     if (elements.exportFullButton) elements.exportFullButton.style.display = 'none';
                 }
@@ -774,6 +1032,8 @@ if (typeof agGrid === 'undefined') {
                     if (elements.statusMessageElement) elements.statusMessageElement.textContent = message.message;
                     if (elements.rowCountInfoElement) elements.rowCountInfoElement.textContent = '';
                     if (elements.truncationWarningElement) elements.truncationWarningElement.style.display = 'none';
+                    if (elements.copyButton) elements.copyButton.style.display = 'none';
+                    if (elements.copyAllButton) elements.copyAllButton.style.display = 'none';
                     if (elements.exportButton) elements.exportButton.style.display = 'none';
                     if (elements.exportFullButton) elements.exportFullButton.style.display = 'none';
                     if (elements.errorContainer) elements.errorContainer.style.display = 'none';

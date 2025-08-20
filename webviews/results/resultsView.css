@@ -170,7 +170,8 @@ body {
     font-style: italic;
 }
 
-.export-button, .export-full-button {
+/* Copy and Export Button Styles */
+.copy-button, .copy-all-button, .export-button, .export-full-button {
     background-color: var(--vscode-button-background);
     color: var(--vscode-button-foreground);
     border: 1px solid var(--vscode-button-border, transparent);
@@ -184,16 +185,22 @@ body {
     transition: background-color 0.1s ease-in-out;
 }
 
-.export-button:hover, .export-full-button:hover {
+/* Copy buttons have a slightly different style to distinguish them */
+.copy-button, .copy-all-button {
+    background-color: var(--vscode-button-secondaryBackground, var(--vscode-button-background));
+    border: 1px solid var(--vscode-contrastBorder, var(--vscode-button-border, transparent));
+}
+
+.copy-button:hover, .copy-all-button:hover, .export-button:hover, .export-full-button:hover {
     background-color: var(--vscode-button-hoverBackground);
 }
 
-.export-button:focus, .export-full-button:focus {
+.copy-button:focus, .copy-all-button:focus, .export-button:focus, .export-full-button:focus {
     outline: 1px solid var(--vscode-focusBorder);
     outline-offset: 2px;
 }
 
-.export-button:active, .export-full-button:active {
+.copy-button:active, .copy-all-button:active, .export-button:active, .export-full-button:active {
     background-color: var(--vscode-button-secondaryBackground, var(--vscode-button-hoverBackground));
 }
 
