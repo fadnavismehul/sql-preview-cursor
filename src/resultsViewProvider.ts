@@ -144,6 +144,10 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
   public createTabWithId(tabId: string, query: string, title?: string) {
     if (this._view) {
       this._view.show?.(true);
+
+      // Focus the SQL Preview panel when creating a new tab
+      this._focusPanel();
+
       this._view.webview.postMessage({
         type: 'createTab',
         tabId: tabId,
@@ -156,7 +160,10 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
   /** Shows loading state for a specific tab */
   public showLoadingForTab(tabId: string, query?: string, title?: string) {
     if (this._view) {
+      // Ensure the SQL Preview panel is visible and focused
       this._view.show?.(true);
+      this._focusPanel();
+
       this._view.webview.postMessage({
         type: 'showLoading',
         tabId: tabId,
@@ -182,6 +189,9 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
   ) {
     if (this._view) {
       this._view.show?.(true);
+      // Focus the panel when showing results
+      this._focusPanel();
+
       this._view.webview.postMessage({
         type: 'resultData',
         tabId: tabId,
@@ -200,6 +210,9 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
   ) {
     if (this._view) {
       this._view.show?.(true);
+      // Focus the panel when showing errors so user can see what went wrong
+      this._focusPanel();
+
       this._view.webview.postMessage({
         type: 'queryError',
         tabId: tabId,
@@ -210,7 +223,26 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  // --- Private method to generate HTML ---
+  // --- Private methods ---
+
+  /**
+   * Attempts to focus the SQL Preview panel using various VS Code commands
+   */
+  private _focusPanel(): void {
+    // Try multiple approaches to focus the panel, as different VS Code versions
+    // and configurations may respond to different commands
+    Promise.resolve(vscode.commands.executeCommand('sqlResultsView.focus')).catch(() => {
+      // If the specific view focus doesn't work, try focusing the container
+      Promise.resolve(
+        vscode.commands.executeCommand('workbench.view.extension.sqlResultsContainer')
+      ).catch(() => {
+        // As a last resort, try to focus the panel area
+        Promise.resolve(vscode.commands.executeCommand('workbench.action.focusPanel')).catch(() => {
+          // All focus attempts failed, but show(true) should still make it visible
+        });
+      });
+    });
+  }
 
   /**
    * Generates the complete HTML content for the webview.
