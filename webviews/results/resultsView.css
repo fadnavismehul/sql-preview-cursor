@@ -232,12 +232,16 @@ body {
     100% { transform: rotate(360deg); }
 }
 
-/* Error Message Styles */
+/* Error Message Styles - Using theme-aware colors like table viewer */
 .error-message {
-    color: var(--vscode-errorForeground);
-    background-color: var(--vscode-inputValidation-errorBackground, rgba(255, 0, 0, 0.1));
-    border: 1px solid var(--vscode-inputValidation-errorBorder, red);
-    border-left: 4px solid var(--vscode-errorForeground, red);
+    /* Use foreground color that works in all themes, with error tinting */
+    color: var(--vscode-editor-foreground);
+    /* Use subtle background that adapts to theme */
+    background-color: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+    /* Use theme-aware border colors */
+    border: 1px solid var(--vscode-editorWidget-border, var(--vscode-contrastBorder));
+    /* Use error color for accent, with theme-safe fallback */
+    border-left: 4px solid var(--vscode-errorForeground, var(--vscode-editorError-foreground, var(--vscode-editor-foreground)));
     padding: 12px 16px;
     margin: 10px; 
     border-radius: 4px;
@@ -455,6 +459,28 @@ body.vscode-high-contrast .ag-theme-quartz .ag-cell {
 }
 body.vscode-high-contrast .ag-theme-quartz .ag-header-cell {
     border-right: 1px solid var(--vscode-contrastBorder);
+}
+
+/* Theme-specific error message styling for better visibility */
+body.vscode-light .error-message {
+    color: var(--vscode-editor-foreground);
+    background-color: var(--vscode-editorWidget-background, #f8f8f8);
+    border: 1px solid var(--vscode-editorWidget-border, #e0e0e0);
+    border-left: 4px solid var(--vscode-errorForeground, #d32f2f);
+}
+
+body.vscode-dark .error-message {
+    color: var(--vscode-editor-foreground);
+    background-color: var(--vscode-editorWidget-background, #2d2d30);
+    border: 1px solid var(--vscode-editorWidget-border, #464647);
+    border-left: 4px solid var(--vscode-errorForeground, #f48771);
+}
+
+body.vscode-high-contrast .error-message {
+    color: var(--vscode-editor-foreground);
+    background-color: var(--vscode-editor-background);
+    border: 2px solid var(--vscode-contrastBorder);
+    border-left: 4px solid var(--vscode-errorForeground, var(--vscode-contrastBorder));
 }
 
 /* Ensure the grid takes up the available space if its container is flex growing */
