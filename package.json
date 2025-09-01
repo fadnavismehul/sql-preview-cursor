@@ -2,7 +2,7 @@
   "name": "sql-preview",
   "displayName": "SQL Preview",
   "description": "Run SQL queries directly from VS Code with tabbed results",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "publisher": "mehul",
   "icon": "media/icon.png",
   "repository": {
@@ -32,12 +32,7 @@
     "Other"
   ],
   "activationEvents": [
-    "onLanguage:sql",
-    "onCommand:sql.runCursorQuery",
-    "onCommand:sql.setPassword",
-    "onCommand:sql.clearPassword",
-    "onCommand:sql.setPasswordFromSettings",
-    "onView:sqlResultsView"
+    "onLanguage:sql"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -90,7 +85,8 @@
     "keybindings": [
       {
         "command": "sql.runCursorQuery",
-        "key": "cmd+enter",
+        "key": "ctrl+enter",
+        "mac": "cmd+enter",
         "when": "editorTextFocus && editorLangId == sql"
       }
     ],
