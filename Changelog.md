@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+
 - Initial VS Code extension setup for Presto/Trino database connections
 - **Secure password storage** using VS Code's SecretStorage API
 - Password management commands for secure credential handling
@@ -27,6 +28,7 @@
   - Live theme updates when user changes VS Code theme
 
 ### Changed
+
 - **SECURITY**: Removed plaintext password storage from settings - now uses secure VS Code SecretStorage
 - Replaced Tabulator with AG Grid for the results view, providing enhanced features and a more modern grid experience.
 - Enabled floating filters by default in the AG Grid results view for easier column-specific filtering.
@@ -37,6 +39,13 @@
 - Refactored CSS to use theme variables for consistent styling
 
 ### Fixed
+
+- **Windows Compatibility**: Fixed "path must not be empty" error during extension activation on Windows systems
+  - Added comprehensive path validation and normalization for cross-platform compatibility
+  - Enhanced webview resource path handling with graceful fallback mechanisms
+  - Implemented proper error handling and logging for path-related issues
+  - Added validation for extension URI and resource roots to prevent empty path errors
+  - Improved extension activation robustness with detailed error reporting
 - Resolved pagination issues when fetching large result sets
 - Fixed layout and styling issues in the results view
 - Corrected variable declarations (let vs const) based on usage patterns
@@ -45,8 +54,9 @@
 - Resolved connection and authentication issues with Trino client
 
 ### Developer Improvements
+
 - Added ESLint configuration
 - Configured TypeScript compilation settings
 - Added proper module structure and organization
-- Implemented better error handling and logging 
-- Created theme-aware UI components for improved user experience 
+- Implemented better error handling and logging
+- Created theme-aware UI components for improved user experience
