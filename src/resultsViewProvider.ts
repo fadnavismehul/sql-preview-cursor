@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 
 /**
  * Manages the webview panel for displaying query results.
@@ -11,8 +12,11 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'sqlResultsView';
 
   private _view?: vscode.WebviewView;
+  private _outputChannel: vscode.OutputChannel;
 
-  constructor(private readonly _extensionUri: vscode.Uri) {}
+  constructor(private readonly _extensionUri: vscode.Uri) {
+    this._outputChannel = vscode.window.createOutputChannel('SQL Preview');
+  }
 
   /**
    * Called when the view is resolved (i.e., created or shown).
@@ -21,14 +25,61 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
   resolveWebviewView(webviewView: vscode.WebviewView) {
     this._view = webviewView;
 
+    // Validate extension URI before proceeding
+    if (
+      !this._extensionUri ||
+      !this._extensionUri.fsPath ||
+      this._extensionUri.fsPath.trim() === ''
+    ) {
+      this._outputChannel.appendLine(
+        'ERROR: Extension URI is invalid, webview may not load properly'
+      );
+      vscode.window.showErrorMessage(
+        'SQL Preview: Extension initialization failed - invalid extension path'
+      );
+      return;
+    }
+
+    // Normalize the extension path to handle Windows path issues
+    const normalizedExtensionPath = path.normalize(this._extensionUri.fsPath);
+    if (!normalizedExtensionPath || normalizedExtensionPath.trim() === '') {
+      this._outputChannel.appendLine('ERROR: Normalized extension path is empty');
+      vscode.window.showErrorMessage('SQL Preview: Extension path normalization failed');
+      return;
+    }
+
+    // Build resource roots with validation
+    const resourceRoots: vscode.Uri[] = [];
+
+    try {
+      const mediaUri = vscode.Uri.joinPath(this._extensionUri, 'media');
+      const webviewsUri = vscode.Uri.joinPath(this._extensionUri, 'webviews');
+
+      // Only add URIs that have valid normalized paths
+      if (mediaUri && mediaUri.fsPath && path.normalize(mediaUri.fsPath).trim() !== '') {
+        resourceRoots.push(mediaUri);
+      }
+      if (webviewsUri && webviewsUri.fsPath && path.normalize(webviewsUri.fsPath).trim() !== '') {
+        resourceRoots.push(webviewsUri);
+      }
+
+      // Ensure we have at least one valid resource root
+      if (resourceRoots.length === 0) {
+        this._outputChannel.appendLine(
+          'WARNING: No valid resource roots found, webview resources may not load'
+        );
+      }
+    } catch (error) {
+      this._outputChannel.appendLine(`ERROR: Error creating resource URIs: ${error}`);
+      vscode.window.showErrorMessage('SQL Preview: Failed to setup webview resources');
+      return;
+    }
+
     webviewView.webview.options = {
       // Allow scripts in the webview
       enableScripts: true,
       // Restrict the webview to only loading resources from our extension's directories
-      localResourceRoots: [
-        vscode.Uri.joinPath(this._extensionUri, 'media'),
-        vscode.Uri.joinPath(this._extensionUri, 'webviews'),
-      ],
+      localResourceRoots: resourceRoots,
     };
 
     // Set the initial HTML content
@@ -258,15 +309,49 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
     // Nonce for Content Security Policy
     const nonce = getNonce();
 
-    // URI for the main JS file for the webview
-    const scriptUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this._extensionUri, 'webviews', 'results', 'resultsView.js')
-    );
+    // Validate extension URI and create resource URIs with error handling
+    let scriptUri: vscode.Uri | undefined;
+    let stylesUri: vscode.Uri | undefined;
 
-    // URI for the main CSS file for the webview
-    const stylesUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this._extensionUri, 'webviews', 'results', 'resultsView.css')
-    );
+    try {
+      if (
+        !this._extensionUri ||
+        !this._extensionUri.fsPath ||
+        this._extensionUri.fsPath.trim() === ''
+      ) {
+        throw new Error('Extension URI is invalid or empty');
+      }
+
+      // Normalize the extension path to handle Windows path issues
+      const normalizedExtensionPath = path.normalize(this._extensionUri.fsPath);
+      if (!normalizedExtensionPath || normalizedExtensionPath.trim() === '') {
+        throw new Error('Normalized extension path is empty');
+      }
+
+      const scriptPath = vscode.Uri.joinPath(
+        this._extensionUri,
+        'webviews',
+        'results',
+        'resultsView.js'
+      );
+      const stylesPath = vscode.Uri.joinPath(
+        this._extensionUri,
+        'webviews',
+        'results',
+        'resultsView.css'
+      );
+
+      // Only create webview URIs if the paths are valid and normalized
+      if (scriptPath && scriptPath.fsPath && path.normalize(scriptPath.fsPath).trim() !== '') {
+        scriptUri = webview.asWebviewUri(scriptPath);
+      }
+      if (stylesPath && stylesPath.fsPath && path.normalize(stylesPath.fsPath).trim() !== '') {
+        stylesUri = webview.asWebviewUri(stylesPath);
+      }
+    } catch (error) {
+      this._outputChannel.appendLine(`ERROR: Error creating webview resource URIs: ${error}`);
+      // Fall back to inline styles/scripts if resource URIs fail
+    }
 
     // AG Grid CDN URIs (Community and Quartz theme)
     // Ensure these are major versions or have SRI if possible for security.
@@ -309,7 +394,7 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
                 <link href="${agGridStylesUri}" rel="stylesheet">
                 <link href="${agGridThemeStylesUri}" rel="stylesheet">
                 <!-- Load local CSS -->
-                <link href="${stylesUri}" rel="stylesheet">
+                ${stylesUri ? `<link href="${stylesUri}" rel="stylesheet">` : '<!-- Local CSS not available -->'}
                 
                 <!-- Custom font size configuration -->
                 <style nonce="${nonce}">
@@ -342,7 +427,7 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
                 <!-- Load AG Grid JS -->
                 <script nonce="${nonce}" src="${agGridScriptUri}"></script>
                 <!-- Load local JS -->
-                <script nonce="${nonce}" src="${scriptUri}"></script>
+                ${scriptUri ? `<script nonce="${nonce}" src="${scriptUri}"></script>` : '<!-- Local JS not available -->'}
             </body>
             </html>`;
   }

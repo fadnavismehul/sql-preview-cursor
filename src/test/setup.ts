@@ -115,5 +115,12 @@ jest.mock('axios', () => ({
   create: jest.fn(),
 }));
 
+// Mock fs module for filesystem operations
+jest.mock('fs', () => ({
+  existsSync: jest.fn(() => true), // Default to true for tests
+  writeFileSync: jest.fn(),
+  readFileSync: jest.fn(),
+}));
+
 // Export mocks for use in tests
 export { mockWebviewPanel, mockWorkspaceConfig, mockContext };

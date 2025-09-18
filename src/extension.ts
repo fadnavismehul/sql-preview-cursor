@@ -6,8 +6,12 @@ import { ResultsViewProvider } from './resultsViewProvider';
 import axios from 'axios'; // Import axios
 import * as https from 'https'; // Import https for custom agent
 import * as fs from 'fs'; // Import fs for file operations
+import * as path from 'path'; // Import path for cross-platform path handling
 
 let resultsViewProvider: ResultsViewProvider | undefined;
+
+// Create output channel for logging
+const outputChannel = vscode.window.createOutputChannel('SQL Preview');
 
 // Secret storage key for database password
 const PASSWORD_SECRET_KEY = 'sqlPreview.database.password';
@@ -98,11 +102,54 @@ async function updatePasswordStatus(context: vscode.ExtensionContext): Promise<v
 export function activate(context: vscode.ExtensionContext) {
   // console.log('Congratulations, your extension "presto-runner" is now active!');
 
-  // Register the Results Webview View Provider
-  resultsViewProvider = new ResultsViewProvider(context.extensionUri);
-  context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(ResultsViewProvider.viewType, resultsViewProvider)
-  );
+  // Validate extension context and URI
+  if (!context || !context.extensionUri) {
+    outputChannel.appendLine('ERROR: Invalid extension context or URI during activation');
+    vscode.window.showErrorMessage('SQL Preview: Extension failed to activate - invalid context');
+    return;
+  }
+
+  // Validate extension path on Windows and other platforms
+  const extensionPath = context.extensionUri.fsPath;
+  if (!extensionPath || extensionPath.trim() === '') {
+    outputChannel.appendLine('ERROR: Extension path is empty or invalid');
+    vscode.window.showErrorMessage('SQL Preview: Extension failed to activate - invalid path');
+    return;
+  }
+
+  // Normalize the path to handle Windows/Unix path differences
+  const normalizedPath = path.normalize(extensionPath);
+  if (!normalizedPath || normalizedPath.trim() === '') {
+    outputChannel.appendLine('ERROR: Normalized extension path is empty');
+    vscode.window.showErrorMessage(
+      'SQL Preview: Extension failed to activate - path normalization failed'
+    );
+    return;
+  }
+
+  // Check if the extension directory exists (additional safety check)
+  try {
+    if (!fs.existsSync(normalizedPath)) {
+      outputChannel.appendLine(`ERROR: Extension directory does not exist: ${normalizedPath}`);
+      vscode.window.showErrorMessage('SQL Preview: Extension directory not found');
+      return;
+    }
+  } catch (error) {
+    outputChannel.appendLine(`ERROR: Error checking extension directory: ${error}`);
+    // Continue anyway as this might be a permissions issue
+  }
+
+  try {
+    // Register the Results Webview View Provider
+    resultsViewProvider = new ResultsViewProvider(context.extensionUri);
+    context.subscriptions.push(
+      vscode.window.registerWebviewViewProvider(ResultsViewProvider.viewType, resultsViewProvider)
+    );
+  } catch (error) {
+    outputChannel.appendLine(`ERROR: Error registering webview provider: ${error}`);
+    vscode.window.showErrorMessage(`SQL Preview: Failed to register webview provider: ${error}`);
+    return;
+  }
 
   // Register the CodeLens provider for SQL files
   context.subscriptions.push(
