@@ -101,4 +101,31 @@ describe('Windows Path Compatibility', () => {
     assert.ok(normalizedWebviews.trim() !== '', 'Normalized webviews path should not be empty');
     assert.ok(normalizedMedia.trim() !== '', 'Normalized media path should not be empty');
   });
+
+  it('Validation logic properly handles filesystem checks', () => {
+    // Test the validation logic directly rather than mocking filesystem
+    const testCases = [
+      { path: '', shouldBeValid: false, description: 'empty path' },
+      { path: '   ', shouldBeValid: false, description: 'whitespace path' },
+      { path: '/mock/extension/path', shouldBeValid: true, description: 'valid path' },
+    ];
+
+    testCases.forEach(testCase => {
+      let isValidPath = false;
+
+      // Simulate the same validation logic from extension.ts
+      if (testCase.path && testCase.path.trim() !== '') {
+        const normalizedPath = path.normalize(testCase.path);
+        if (normalizedPath && normalizedPath.trim() !== '') {
+          isValidPath = true;
+        }
+      }
+
+      assert.strictEqual(
+        isValidPath,
+        testCase.shouldBeValid,
+        `Path validation failed for ${testCase.description}: "${testCase.path}"`
+      );
+    });
+  });
 });

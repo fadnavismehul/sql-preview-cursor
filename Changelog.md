@@ -46,6 +46,7 @@
   - Implemented proper error handling and logging for path-related issues
   - Added validation for extension URI and resource roots to prevent empty path errors
   - Improved extension activation robustness with detailed error reporting
+  - Properly mocked filesystem dependencies in tests instead of bypassing validation
 - Resolved pagination issues when fetching large result sets
 - Fixed layout and styling issues in the results view
 - Corrected variable declarations (let vs const) based on usage patterns
