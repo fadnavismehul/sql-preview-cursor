@@ -152,8 +152,9 @@ export function activate(context: vscode.ExtensionContext) {
   }
 
   // Register the CodeLens provider for SQL files
-  context.subscriptions.push(
-    vscode.languages.registerCodeLensProvider({ language: 'sql' }, new PrestoCodeLensProvider())
+  const codeLensProvider = vscode.languages.registerCodeLensProvider(
+    { language: 'sql' },
+    new PrestoCodeLensProvider()
   );
 
   // Update password status on activation
@@ -236,404 +237,430 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
-  // Register the command to run the query under the cursor
-  const runQueryCommand = vscode.commands.registerCommand(
-    'sql.runCursorQuery',
-    async (sqlFromCodeLens?: string) => {
-      if (!resultsViewProvider) {
-        vscode.window.showErrorMessage('Results view is not available.');
+  // Helper function for executing queries with different tab behaviors
+  async function executeQuery(sqlFromCodeLens?: string, createNewTab = true) {
+    if (!resultsViewProvider) {
+      vscode.window.showErrorMessage('Results view is not available.');
+      return;
+    }
+
+    let sql: string;
+
+    if (sqlFromCodeLens) {
+      // Called from CodeLens with SQL provided
+      sql = sqlFromCodeLens.trim().replace(/;$/, '').trim();
+    } else {
+      // Called from keyboard shortcut - need to get SQL from editor
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        vscode.window.showErrorMessage('No active SQL editor found.');
         return;
       }
 
-      let sql: string;
-
-      if (sqlFromCodeLens) {
-        // Called from CodeLens with SQL provided
-        sql = sqlFromCodeLens.trim().replace(/;$/, '').trim();
+      // Check if there's a selection
+      const selection = editor.selection;
+      if (!selection.isEmpty) {
+        // Use selected text
+        sql = editor.document.getText(selection).trim().replace(/;$/, '').trim();
       } else {
-        // Called from keyboard shortcut - need to get SQL from editor
-        const editor = vscode.window.activeTextEditor;
-        if (!editor) {
-          vscode.window.showErrorMessage('No active SQL editor found.');
+        // No selection, find the query under cursor using similar logic to CodeLens
+        const document = editor.document;
+        const cursorPosition = editor.selection.active;
+        const text = document.getText();
+
+        // Split by semicolons (same logic as CodeLens provider)
+        const queries = text.split(/;\s*?(?=\S)/gm);
+
+        let currentOffset = 0;
+        let foundQuery = '';
+
+        for (const query of queries) {
+          const trimmedQuery = query.trim();
+          if (trimmedQuery.length === 0) {
+            currentOffset += query.length + 1;
+            continue;
+          }
+
+          const startOffset = text.indexOf(trimmedQuery, currentOffset);
+          if (startOffset === -1) {
+            currentOffset += query.length + 1;
+            continue;
+          }
+          const endOffset = startOffset + trimmedQuery.length;
+
+          const startPos = document.positionAt(startOffset);
+          const endPos = document.positionAt(endOffset);
+
+          // Check if cursor is within this query
+          if (cursorPosition.isAfterOrEqual(startPos) && cursorPosition.isBeforeOrEqual(endPos)) {
+            foundQuery = trimmedQuery;
+            break;
+          }
+
+          currentOffset = endOffset;
+        }
+
+        if (!foundQuery) {
+          vscode.window.showInformationMessage(
+            'No SQL query found under cursor. Place cursor within a query or select text to run.'
+          );
           return;
         }
 
-        // Check if there's a selection
-        const selection = editor.selection;
-        if (!selection.isEmpty) {
-          // Use selected text
-          sql = editor.document.getText(selection).trim().replace(/;$/, '').trim();
-        } else {
-          // No selection, find the query under cursor using similar logic to CodeLens
-          const document = editor.document;
-          const cursorPosition = editor.selection.active;
-          const text = document.getText();
-
-          // Split by semicolons (same logic as CodeLens provider)
-          const queries = text.split(/;\s*?(?=\S)/gm);
-
-          let currentOffset = 0;
-          let foundQuery = '';
-
-          for (const query of queries) {
-            const trimmedQuery = query.trim();
-            if (trimmedQuery.length === 0) {
-              currentOffset += query.length + 1;
-              continue;
-            }
-
-            const startOffset = text.indexOf(trimmedQuery, currentOffset);
-            if (startOffset === -1) {
-              currentOffset += query.length + 1;
-              continue;
-            }
-            const endOffset = startOffset + trimmedQuery.length;
-
-            const startPos = document.positionAt(startOffset);
-            const endPos = document.positionAt(endOffset);
-
-            // Check if cursor is within this query
-            if (cursorPosition.isAfterOrEqual(startPos) && cursorPosition.isBeforeOrEqual(endPos)) {
-              foundQuery = trimmedQuery;
-              break;
-            }
-
-            currentOffset = endOffset;
-          }
-
-          if (!foundQuery) {
-            vscode.window.showInformationMessage(
-              'No SQL query found under cursor. Place cursor within a query or select text to run.'
-            );
-            return;
-          }
-
-          sql = foundQuery.trim().replace(/;$/, '').trim();
-        }
+        sql = foundQuery.trim().replace(/;$/, '').trim();
       }
+    }
 
-      if (!sql) {
-        vscode.window.showInformationMessage('No SQL query found to run.');
-        return;
-      }
+    if (!sql) {
+      vscode.window.showInformationMessage('No SQL query found to run.');
+      return;
+    }
 
+    // Handle tab creation based on the createNewTab parameter
+    let tabId: string;
+    const queryPreview = sql.length > 30 ? sql.substring(0, 30) + '...' : sql;
+
+    if (createNewTab) {
       // Generate a unique tab ID for this query
-      const tabId = `tab-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-      const queryPreview = sql.length > 30 ? sql.substring(0, 30) + '...' : sql;
-
-      // Create a new tab with the specific tabId and show loading
+      tabId = `tab-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
       resultsViewProvider.createTabWithId(tabId, sql, queryPreview);
       resultsViewProvider.showLoadingForTab(tabId, sql, queryPreview);
+    } else {
+      // Use existing active tab or create a new one if none exists
+      tabId = resultsViewProvider.getOrCreateActiveTabId(sql, queryPreview);
+      resultsViewProvider.showLoadingForTab(tabId, sql, queryPreview);
+    }
 
-      const config = vscode.workspace.getConfiguration('sqlPreview');
-      const host = config.get<string>('host', 'localhost');
-      const port = config.get<number>('port', 8080);
-      const user = config.get<string>('user', 'user');
-      const catalog = config.get<string>('catalog') || undefined;
-      const schema = config.get<string>('schema') || undefined;
-      const ssl = config.get<boolean>('ssl', false);
-      const sslVerify = config.get<boolean>('sslVerify', true);
-      const maxRows = config.get<number>('maxRowsToDisplay', 500);
+    const config = vscode.workspace.getConfiguration('sqlPreview');
+    const host = config.get<string>('host', 'localhost');
+    const port = config.get<number>('port', 8080);
+    const user = config.get<string>('user', 'user');
+    const catalog = config.get<string>('catalog') || undefined;
+    const schema = config.get<string>('schema') || undefined;
+    const ssl = config.get<boolean>('ssl', false);
+    const sslVerify = config.get<boolean>('sslVerify', true);
+    const maxRows = config.get<number>('maxRowsToDisplay', 500);
 
-      // Get password securely from secret storage
-      const password = await getStoredPassword(context);
+    // Get password securely from secret storage
+    const password = await getStoredPassword(context);
 
-      // --- Setup Authentication ---
-      let basicAuthHeader: string | undefined;
-      if (password) {
-        basicAuthHeader = 'Basic ' + Buffer.from(`${user}:${password}`).toString('base64');
-      }
-      // TODO: Handle other auth methods if needed
+    // --- Setup Authentication ---
+    let basicAuthHeader: string | undefined;
+    if (password) {
+      basicAuthHeader = 'Basic ' + Buffer.from(`${user}:${password}`).toString('base64');
+    }
+    // TODO: Handle other auth methods if needed
 
-      // --- Setup Client Options (excluding auth for create) ---
-      const clientOptions: {
-        server: string;
-        user: string;
-        catalog: string;
-        schema: string;
-        ssl?: { rejectUnauthorized: boolean };
-        auth?: BasicAuth;
-      } = {
-        server: `${ssl ? 'https' : 'http'}://${host}:${port}`,
-        user: user,
-        catalog: catalog || 'hive',
-        schema: schema || 'default',
-        ...(ssl ? { ssl: { rejectUnauthorized: sslVerify } } : {}),
-        // Pass custom agent ONLY if using SSL and custom verification needed
-        // httpsAgent: ssl ? createHttpsAgent(sslVerify) : undefined
-        // NOTE: trino-client might not support custom httpsAgent directly in options.
-        // We will handle SSL verification in direct axios calls.
-      };
-      // Add auth separately if supported by create method in this version
-      if (password) {
-        clientOptions.auth = new BasicAuth(user, password);
-      }
+    // --- Setup Client Options (excluding auth for create) ---
+    const clientOptions: {
+      server: string;
+      user: string;
+      catalog: string;
+      schema: string;
+      ssl?: { rejectUnauthorized: boolean };
+      auth?: BasicAuth;
+    } = {
+      server: `${ssl ? 'https' : 'http'}://${host}:${port}`,
+      user: user,
+      catalog: catalog || 'hive',
+      schema: schema || 'default',
+      ...(ssl ? { ssl: { rejectUnauthorized: sslVerify } } : {}),
+      // Pass custom agent ONLY if using SSL and custom verification needed
+      // httpsAgent: ssl ? createHttpsAgent(sslVerify) : undefined
+      // NOTE: trino-client might not support custom httpsAgent directly in options.
+      // We will handle SSL verification in direct axios calls.
+    };
+    // Add auth separately if supported by create method in this version
+    if (password) {
+      clientOptions.auth = new BasicAuth(user, password);
+    }
 
-      const client = Trino.create(clientOptions);
+    const client = Trino.create(clientOptions);
 
-      try {
-        // console.log(`Executing query: ${sql.substring(0, 100)}...`);
+    try {
+      // console.log(`Executing query: ${sql.substring(0, 100)}...`);
 
-        const results: unknown[][] = [];
-        let columns: { name: string; type: string }[] | null = null;
-        let rawResultObject: TrinoQueryResponse | null = null;
-        let nextUriFromResponse: string | undefined = undefined;
-        let infoUriFromResponse: string | undefined = undefined;
-        let queryIdFromResponse: string | undefined = undefined;
-        // let wasTruncated = false; // Currently unused, may be needed for future pagination logic
-        let totalRowsFetched = 0;
-        let currentPageUri: string | undefined = undefined; // Declare higher scope
+      const results: unknown[][] = [];
+      let columns: { name: string; type: string }[] | null = null;
+      let rawResultObject: TrinoQueryResponse | null = null;
+      let nextUriFromResponse: string | undefined = undefined;
+      let infoUriFromResponse: string | undefined = undefined;
+      let queryIdFromResponse: string | undefined = undefined;
+      // let wasTruncated = false; // Currently unused, may be needed for future pagination logic
+      let totalRowsFetched = 0;
+      let currentPageUri: string | undefined = undefined; // Declare higher scope
 
-        // --- Execute Query and Fetch Pages ---
-        // console.log('Attempting to fetch first page...');
-        const queryIter = await client.query(sql);
-        const firstIteration = await queryIter.next();
-        rawResultObject = firstIteration.value;
-        // console.log(`First iteration result: done = ${firstIteration.done}`);
+      // --- Execute Query and Fetch Pages ---
+      // console.log('Attempting to fetch first page...');
+      const queryIter = await client.query(sql);
+      const firstIteration = await queryIter.next();
+      rawResultObject = firstIteration.value;
+      // console.log(`First iteration result: done = ${firstIteration.done}`);
 
-        // Log the raw response for debugging
-        // console.log('Raw response structure:', {
-        //   hasValue: !!rawResultObject,
-        //   hasError: !!rawResultObject?.error,
-        //   hasStats: !!rawResultObject?.stats,
-        //   state: rawResultObject?.stats?.state,
-        //   hasColumns: !!rawResultObject?.columns,
-        //   hasData: !!rawResultObject?.data,
-        //   queryId: rawResultObject?.id,
-        // });
+      // Log the raw response for debugging
+      // console.log('Raw response structure:', {
+      //   hasValue: !!rawResultObject,
+      //   hasError: !!rawResultObject?.error,
+      //   hasStats: !!rawResultObject?.stats,
+      //   state: rawResultObject?.stats?.state,
+      //   hasColumns: !!rawResultObject?.columns,
+      //   hasData: !!rawResultObject?.data,
+      //   queryId: rawResultObject?.id,
+      // });
 
-        if (rawResultObject) {
-          // console.log('Raw FIRST queryResult value received.'); // No need to log full object now
+      if (rawResultObject) {
+        // console.log('Raw FIRST queryResult value received.'); // No need to log full object now
 
-          // Check for error conditions in the response
-          if (rawResultObject.error) {
-            // Handle Presto/Trino error response
-            const errorMessage =
-              rawResultObject.error.message ||
-              rawResultObject.error.errorName ||
-              'Unknown query error';
-            const errorDetails =
-              rawResultObject.error.stack || rawResultObject.error.errorCode || undefined;
-            // console.error('Presto Query Error from response:', rawResultObject.error);
-            resultsViewProvider?.showErrorForTab(
-              tabId,
-              errorMessage,
-              errorDetails,
-              sql,
-              queryPreview
-            );
-            return;
-          }
-
-          // Check for failed query state
-          if (rawResultObject.stats && rawResultObject.stats.state === 'FAILED') {
-            const errorMessage = 'Query execution failed';
-            const errorDetails = rawResultObject.stats.state;
-            // console.error('Presto Query Failed:', rawResultObject);
-            resultsViewProvider?.showErrorForTab(
-              tabId,
-              errorMessage,
-              errorDetails,
-              sql,
-              queryPreview
-            );
-            return;
-          }
-
-          if (rawResultObject.columns && Array.isArray(rawResultObject.columns)) {
-            columns = rawResultObject.columns.map((col: { name: string; type: string }) => ({
-              name: col.name,
-              type: col.type,
-            }));
-          }
-          if (rawResultObject.data && Array.isArray(rawResultObject.data)) {
-            results.push(...rawResultObject.data);
-            totalRowsFetched += rawResultObject.data.length;
-          }
-          nextUriFromResponse = rawResultObject.nextUri;
-          infoUriFromResponse = rawResultObject.infoUri;
-          queryIdFromResponse = rawResultObject.id;
+        // Check for error conditions in the response
+        if (rawResultObject.error) {
+          // Handle Presto/Trino error response
+          const errorMessage =
+            rawResultObject.error.message ||
+            rawResultObject.error.errorName ||
+            'Unknown query error';
+          const errorDetails =
+            rawResultObject.error.stack || rawResultObject.error.errorCode || undefined;
+          // console.error('Presto Query Error from response:', rawResultObject.error);
+          resultsViewProvider?.showErrorForTab(
+            tabId,
+            errorMessage,
+            errorDetails,
+            sql,
+            queryPreview
+          );
+          return;
         }
 
-        // --- Fetch subsequent pages if needed ---
-        currentPageUri = nextUriFromResponse; // Initialize before loop
-        if (columns && columns.length > 0) {
-          let pageCount = 1;
-          const httpsAgent = createHttpsAgent(sslVerify);
+        // Check for failed query state
+        if (rawResultObject.stats && rawResultObject.stats.state === 'FAILED') {
+          const errorMessage = 'Query execution failed';
+          const errorDetails = rawResultObject.stats.state;
+          // console.error('Presto Query Failed:', rawResultObject);
+          resultsViewProvider?.showErrorForTab(
+            tabId,
+            errorMessage,
+            errorDetails,
+            sql,
+            queryPreview
+          );
+          return;
+        }
 
-          while (currentPageUri && totalRowsFetched < maxRows) {
-            pageCount++;
-            // console.log(
-            //   `Fetching page ${pageCount} (total rows so far: ${totalRowsFetched})... URI: ${currentPageUri}`
-            // );
+        if (rawResultObject.columns && Array.isArray(rawResultObject.columns)) {
+          columns = rawResultObject.columns.map((col: { name: string; type: string }) => ({
+            name: col.name,
+            type: col.type,
+          }));
+        }
+        if (rawResultObject.data && Array.isArray(rawResultObject.data)) {
+          results.push(...rawResultObject.data);
+          totalRowsFetched += rawResultObject.data.length;
+        }
+        nextUriFromResponse = rawResultObject.nextUri;
+        infoUriFromResponse = rawResultObject.infoUri;
+        queryIdFromResponse = rawResultObject.id;
+      }
 
-            try {
-              // Cast the config to bypass type checking for Node.js specific options
-              const config: {
-                headers?: Record<string, string>;
-                httpsAgent?: https.Agent;
-              } = {};
+      // --- Fetch subsequent pages if needed ---
+      currentPageUri = nextUriFromResponse; // Initialize before loop
+      if (columns && columns.length > 0) {
+        let pageCount = 1;
+        const httpsAgent = createHttpsAgent(sslVerify);
 
-              if (basicAuthHeader) {
-                config.headers = { Authorization: basicAuthHeader };
-              }
-              if (httpsAgent) {
-                config.httpsAgent = httpsAgent;
-              }
-              const response = await axios.get(currentPageUri, config);
+        while (currentPageUri && totalRowsFetched < maxRows) {
+          pageCount++;
+          // console.log(
+          //   `Fetching page ${pageCount} (total rows so far: ${totalRowsFetched})... URI: ${currentPageUri}`
+          // );
 
-              const pageData = response.data as TrinoQueryResponse;
+          try {
+            // Cast the config to bypass type checking for Node.js specific options
+            const config: {
+              headers?: Record<string, string>;
+              httpsAgent?: https.Agent;
+            } = {};
 
-              // Check for error conditions in pagination response
-              if (pageData?.error) {
-                const errorMessage =
-                  pageData.error.message ||
-                  pageData.error.errorName ||
-                  'Error in paginated results';
-                const errorDetails = pageData.error.stack || pageData.error.errorCode || undefined;
-                // console.error('Presto Query Error in pagination:', pageData.error);
-                resultsViewProvider?.showErrorForTab(
-                  tabId,
-                  errorMessage,
-                  errorDetails,
-                  sql,
-                  queryPreview
-                );
-                return;
-              }
-
-              if (pageData?.data && Array.isArray(pageData.data)) {
-                results.push(...pageData.data);
-                totalRowsFetched += pageData.data.length;
-                // console.log(
-                //   `Fetched ${pageData.data.length} rows from page ${pageCount}. New total: ${totalRowsFetched}`
-                // );
-              }
-              currentPageUri = pageData?.nextUri;
-              if (!currentPageUri) {
-                // console.log(
-                //   'No nextUri found in page',
-                //   pageCount,
-                //   'response. Pagination complete.'
-                // );
-              }
-            } catch (pageError: unknown) {
-              // console.error(
-              //   `Error fetching page ${pageCount} from ${currentPageUri}:`,
-              //   pageError instanceof Error ? pageError.message : 'Unknown error'
-              // );
-              vscode.window.showWarningMessage(
-                `Failed to fetch all results page ${pageCount}: ${pageError instanceof Error ? pageError.message : 'Unknown error'}`
-              );
-              currentPageUri = undefined; // Stop pagination on error
+            if (basicAuthHeader) {
+              config.headers = { Authorization: basicAuthHeader };
             }
-          }
+            if (httpsAgent) {
+              config.httpsAgent = httpsAgent;
+            }
+            const response = await axios.get(currentPageUri, config);
 
-          // Check if truncated after pagination attempt
-          if (currentPageUri || totalRowsFetched > maxRows) {
-            // wasTruncated = true; // Currently unused
-            // console.log('Results potentially truncated after pagination.');
+            const pageData = response.data as TrinoQueryResponse;
+
+            // Check for error conditions in pagination response
+            if (pageData?.error) {
+              const errorMessage =
+                pageData.error.message || pageData.error.errorName || 'Error in paginated results';
+              const errorDetails = pageData.error.stack || pageData.error.errorCode || undefined;
+              // console.error('Presto Query Error in pagination:', pageData.error);
+              resultsViewProvider?.showErrorForTab(
+                tabId,
+                errorMessage,
+                errorDetails,
+                sql,
+                queryPreview
+              );
+              return;
+            }
+
+            if (pageData?.data && Array.isArray(pageData.data)) {
+              results.push(...pageData.data);
+              totalRowsFetched += pageData.data.length;
+              // console.log(
+              //   `Fetched ${pageData.data.length} rows from page ${pageCount}. New total: ${totalRowsFetched}`
+              // );
+            }
+            currentPageUri = pageData?.nextUri;
+            if (!currentPageUri) {
+              // console.log(
+              //   'No nextUri found in page',
+              //   pageCount,
+              //   'response. Pagination complete.'
+              // );
+            }
+          } catch (pageError: unknown) {
+            // console.error(
+            //   `Error fetching page ${pageCount} from ${currentPageUri}:`,
+            //   pageError instanceof Error ? pageError.message : 'Unknown error'
+            // );
+            vscode.window.showWarningMessage(
+              `Failed to fetch all results page ${pageCount}: ${pageError instanceof Error ? pageError.message : 'Unknown error'}`
+            );
+            currentPageUri = undefined; // Stop pagination on error
           }
         }
 
-        // console.log(
-        //   `Query finished processing. Total rows fetched: ${totalRowsFetched}. Columns: ${columns?.length ?? 0}`
-        // );
-
-        // --- Store result state and limit rows for display ---
-        // TODO: Re-enable result caching when export feature is implemented
-        // lastSuccessfulQueryResult = null;
-        // let displayRows = [...results]; // Use potentially paginated results
-        // const finalTotalRows = totalRowsFetched;
-
-        // Store the potentially paginated results (up to maxRows or full set)
-        if (columns && columns.length > 0) {
-          // TODO: Re-enable result caching when export feature is implemented
-          // const resultToStore: LastQueryResult = {
-          //     columns: columns,
-          //     rows: results,
-          //     query: sql,
-          //     ...(nextUriFromResponse && { nextUri: nextUriFromResponse }),
-          //     ...(infoUriFromResponse && { infoUri: infoUriFromResponse }),
-          //     ...(queryIdFromResponse && { id: queryIdFromResponse })
-          // };
-          // lastSuccessfulQueryResult = resultToStore;
-
-          // Slice for display if needed
-          if (results.length > maxRows) {
-            // console.log(`Limiting display rows from ${totalRowsFetched} to ${maxRows}`);
-            // displayRows = results.slice(0, maxRows); // Currently unused
-            // wasTruncated = true; // Currently unused
-          }
-
-          // Update truncation flag if pagination stopped due to hitting maxRows
-          if (!currentPageUri && totalRowsFetched >= maxRows) {
-            // We might have fetched exactly maxRows but there could have been more
-            // Or we fetched > maxRows and sliced. Either way, consider truncated.
-            // Exception: If the very last page happened to bring us exactly to maxRows and had no nextUri.
-            // It's safer to assume truncation if we hit the limit.
-            // wasTruncated = true; // Currently unused
-          }
-
-          // Send display results to view provider for the specific tab
-          const displayData: {
-            columns: Array<{ name: string; type: string }>;
-            rows: unknown[][];
-            query: string;
-            wasTruncated: boolean;
-            totalRowsInFirstBatch: number;
-            queryId?: string;
-            infoUri?: string;
-            nextUri?: string;
-          } = {
-            columns,
-            rows: results.slice(0, maxRows),
-            query: sql,
-            wasTruncated: results.length > maxRows || !!currentPageUri,
-            totalRowsInFirstBatch: results.length,
-          };
-
-          // Only add optional properties if they have defined values
-          if (queryIdFromResponse) {
-            displayData.queryId = queryIdFromResponse;
-          }
-          if (infoUriFromResponse) {
-            displayData.infoUri = infoUriFromResponse;
-          }
-          if (currentPageUri) {
-            displayData.nextUri = currentPageUri;
-          }
-
-          resultsViewProvider.showResultsForTab(tabId, displayData);
-        } else {
-          // No columns found - this could be a DDL/DML statement or an error condition
-          // console.warn('Could not determine columns or no columns returned...');
-
-          // If we got a queryId, it likely executed successfully (DDL/DML)
-          if (queryIdFromResponse) {
-            resultsViewProvider.showStatusMessage(
-              `Query executed successfully (Query ID: ${queryIdFromResponse}). No data returned - this is normal for DDL/DML operations.`
-            );
-          } else {
-            // No queryId might indicate an issue - provide more guidance
-            resultsViewProvider.showStatusMessage(
-              'Query completed but returned no data. Check for syntax errors or verify the query produces results.'
-            );
-          }
+        // Check if truncated after pagination attempt
+        if (currentPageUri || totalRowsFetched > maxRows) {
+          // wasTruncated = true; // Currently unused
+          // console.log('Results potentially truncated after pagination.');
         }
-      } catch (error: unknown) {
-        // console.error('Trino Query Error:', error);
-        const errorMessage =
-          error instanceof Error ? error.message : 'Unknown error during query execution.';
-        vscode.window.showErrorMessage(`Trino Query Failed: ${errorMessage}`);
-        resultsViewProvider?.showErrorForTab(
-          tabId,
-          errorMessage,
-          error instanceof Error ? error.stack : undefined,
-          sql,
-          queryPreview
-        );
       }
+
+      // console.log(
+      //   `Query finished processing. Total rows fetched: ${totalRowsFetched}. Columns: ${columns?.length ?? 0}`
+      // );
+
+      // --- Store result state and limit rows for display ---
+      // TODO: Re-enable result caching when export feature is implemented
+      // lastSuccessfulQueryResult = null;
+      // let displayRows = [...results]; // Use potentially paginated results
+      // const finalTotalRows = totalRowsFetched;
+
+      // Store the potentially paginated results (up to maxRows or full set)
+      if (columns && columns.length > 0) {
+        // TODO: Re-enable result caching when export feature is implemented
+        // const resultToStore: LastQueryResult = {
+        //     columns: columns,
+        //     rows: results,
+        //     query: sql,
+        //     ...(nextUriFromResponse && { nextUri: nextUriFromResponse }),
+        //     ...(infoUriFromResponse && { infoUri: infoUriFromResponse }),
+        //     ...(queryIdFromResponse && { id: queryIdFromResponse })
+        // };
+        // lastSuccessfulQueryResult = resultToStore;
+
+        // Slice for display if needed
+        if (results.length > maxRows) {
+          // console.log(`Limiting display rows from ${totalRowsFetched} to ${maxRows}`);
+          // displayRows = results.slice(0, maxRows); // Currently unused
+          // wasTruncated = true; // Currently unused
+        }
+
+        // Update truncation flag if pagination stopped due to hitting maxRows
+        if (!currentPageUri && totalRowsFetched >= maxRows) {
+          // We might have fetched exactly maxRows but there could have been more
+          // Or we fetched > maxRows and sliced. Either way, consider truncated.
+          // Exception: If the very last page happened to bring us exactly to maxRows and had no nextUri.
+          // It's safer to assume truncation if we hit the limit.
+          // wasTruncated = true; // Currently unused
+        }
+
+        // Send display results to view provider for the specific tab
+        const displayData: {
+          columns: Array<{ name: string; type: string }>;
+          rows: unknown[][];
+          query: string;
+          wasTruncated: boolean;
+          totalRowsInFirstBatch: number;
+          queryId?: string;
+          infoUri?: string;
+          nextUri?: string;
+        } = {
+          columns,
+          rows: results.slice(0, maxRows),
+          query: sql,
+          wasTruncated: results.length > maxRows || !!currentPageUri,
+          totalRowsInFirstBatch: results.length,
+        };
+
+        // Only add optional properties if they have defined values
+        if (queryIdFromResponse) {
+          displayData.queryId = queryIdFromResponse;
+        }
+        if (infoUriFromResponse) {
+          displayData.infoUri = infoUriFromResponse;
+        }
+        if (currentPageUri) {
+          displayData.nextUri = currentPageUri;
+        }
+
+        resultsViewProvider.showResultsForTab(tabId, displayData);
+      } else {
+        // No columns found - this could be a DDL/DML statement or an error condition
+        // console.warn('Could not determine columns or no columns returned...');
+
+        // If we got a queryId, it likely executed successfully (DDL/DML)
+        if (queryIdFromResponse) {
+          resultsViewProvider.showStatusMessage(
+            `Query executed successfully (Query ID: ${queryIdFromResponse}). No data returned - this is normal for DDL/DML operations.`
+          );
+        } else {
+          // No queryId might indicate an issue - provide more guidance
+          resultsViewProvider.showStatusMessage(
+            'Query completed but returned no data. Check for syntax errors or verify the query produces results.'
+          );
+        }
+      }
+    } catch (error: unknown) {
+      // console.error('Trino Query Error:', error);
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error during query execution.';
+      vscode.window.showErrorMessage(`Trino Query Failed: ${errorMessage}`);
+      resultsViewProvider?.showErrorForTab(
+        tabId,
+        errorMessage,
+        error instanceof Error ? error.stack : undefined,
+        sql,
+        queryPreview
+      );
+    }
+  }
+
+  // Register the command to run query in the same tab
+  const runQueryCommand = vscode.commands.registerCommand(
+    'sql.runQuery',
+    async (sqlFromCodeLens?: string) => {
+      await executeQuery(sqlFromCodeLens, false); // Don't create new tab
+    }
+  );
+
+  // Register the command to run query in a new tab
+  const runQueryNewTabCommand = vscode.commands.registerCommand(
+    'sql.runQueryNewTab',
+    async (sqlFromCodeLens?: string) => {
+      await executeQuery(sqlFromCodeLens, true); // Create new tab
+    }
+  );
+
+  // Register the legacy command for backward compatibility
+  const runCursorQueryCommand = vscode.commands.registerCommand(
+    'sql.runCursorQuery',
+    async (sqlFromCodeLens?: string) => {
+      await executeQuery(sqlFromCodeLens, true); // Default to creating new tab for backward compatibility
     }
   );
 
@@ -645,8 +672,33 @@ export function activate(context: vscode.ExtensionContext) {
     }
   );
 
+  // Register tab management commands
+  const closeTabCommand = vscode.commands.registerCommand('sql.closeTab', () => {
+    if (resultsViewProvider) {
+      resultsViewProvider.closeActiveTab();
+    }
+  });
+
+  const closeOtherTabsCommand = vscode.commands.registerCommand('sql.closeOtherTabs', () => {
+    if (resultsViewProvider) {
+      resultsViewProvider.closeOtherTabs();
+    }
+  });
+
+  const closeAllTabsCommand = vscode.commands.registerCommand('sql.closeAllTabs', () => {
+    if (resultsViewProvider) {
+      resultsViewProvider.closeAllTabs();
+    }
+  });
+
   context.subscriptions.push(
+    codeLensProvider,
     runQueryCommand,
+    runQueryNewTabCommand,
+    runCursorQueryCommand,
+    closeTabCommand,
+    closeOtherTabsCommand,
+    closeAllTabsCommand,
     setPasswordCommand,
     setPasswordFromSettingsCommand,
     clearPasswordCommand,

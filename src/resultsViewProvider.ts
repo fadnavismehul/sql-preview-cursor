@@ -208,6 +208,52 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  /** Gets the active tab ID or creates a new tab if none exists */
+  public getOrCreateActiveTabId(query: string, title?: string): string {
+    if (this._view) {
+      this._view.show?.(true);
+      this._focusPanel();
+
+      // Send message to webview to reuse active tab or create new one
+      this._view.webview.postMessage({
+        type: 'reuseOrCreateActiveTab',
+        query: query,
+        title: title || `Query ${Date.now()}`,
+      });
+      // Return a placeholder ID - the actual tab ID will be determined by the webview
+      return 'active-tab-placeholder';
+    }
+    // Fallback ID if webview is not available
+    return `tab-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  }
+
+  /** Closes the currently active tab */
+  public closeActiveTab() {
+    if (this._view) {
+      this._view.webview.postMessage({
+        type: 'closeActiveTab',
+      });
+    }
+  }
+
+  /** Closes all tabs except the active one */
+  public closeOtherTabs() {
+    if (this._view) {
+      this._view.webview.postMessage({
+        type: 'closeOtherTabs',
+      });
+    }
+  }
+
+  /** Closes all tabs */
+  public closeAllTabs() {
+    if (this._view) {
+      this._view.webview.postMessage({
+        type: 'closeAllTabs',
+      });
+    }
+  }
+
   /** Shows loading state for a specific tab */
   public showLoadingForTab(tabId: string, query?: string, title?: string) {
     if (this._view) {

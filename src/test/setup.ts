@@ -83,8 +83,9 @@ jest.mock('vscode', () => ({
     One: 1,
     Two: 2,
   },
-  Position: jest.fn(),
-  Range: jest.fn(),
+  Position: jest.fn().mockImplementation((line, character) => ({ line, character })),
+  Range: jest.fn().mockImplementation((start, end) => ({ start, end })),
+  CodeLens: jest.fn().mockImplementation((range, command) => ({ range, command })),
   StatusBarAlignment: {
     Left: 1,
     Right: 2,
