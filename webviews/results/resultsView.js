@@ -141,8 +141,8 @@ if (typeof agGrid === 'undefined') {
                     <span class="truncation-warning" style="display: none; color: var(--vscode-descriptionForeground); margin-left: 10px;">(Results limited)</span>
                 </div>
                 <div>
-                    <button class="copy-button" style="display: none;" title="Copy first 5 rows to clipboard as CSV (includes headers)">Copy First 5 Rows</button>
-                    <button class="copy-all-button" style="display: none; margin-left: 5px;" title="Copy all displayed results to clipboard as CSV">Copy All</button>
+                    <button class="copy-button" style="display: none;" title="Copy first 5 rows to clipboard as TSV (includes headers) - perfect for pasting into Google Sheets">Copy First 5 Rows</button>
+                    <button class="copy-all-button" style="display: none; margin-left: 5px;" title="Copy all displayed results to clipboard as TSV - perfect for pasting into Google Sheets">Copy All</button>
                     <button class="export-button" style="display: none; margin-left: 5px;" title="Export currently displayed results to CSV">Export Displayed</button>
                     <button class="export-full-button" style="display: none; margin-left: 5px;" title="Export all query results to CSV">Export Full Results</button> 
                 </div>
@@ -165,6 +165,12 @@ if (typeof agGrid === 'undefined') {
         tabElement.querySelector('.tab-close').addEventListener('click', (e) => {
             e.stopPropagation();
             closeTab(tabId);
+        });
+
+        // Add context menu for tab management
+        tabElement.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            showTabContextMenu(e, tabId);
         });
 
         // Add to DOM
@@ -263,6 +269,123 @@ if (typeof agGrid === 'undefined') {
             exportButton: tabContent.querySelector('.export-button'),
             exportFullButton: tabContent.querySelector('.export-full-button')
         };
+    }
+
+    // Tab context menu functionality
+    function showTabContextMenu(event, tabId) {
+        // Remove any existing context menu
+        const existingMenu = document.querySelector('.tab-context-menu');
+        if (existingMenu) {
+            existingMenu.remove();
+        }
+
+        // Create context menu
+        const menu = document.createElement('div');
+        menu.className = 'tab-context-menu';
+        menu.style.position = 'fixed';
+        menu.style.left = `${event.clientX}px`;
+        menu.style.top = `${event.clientY}px`;
+        menu.style.backgroundColor = 'var(--vscode-menu-background)';
+        menu.style.border = '1px solid var(--vscode-menu-border)';
+        menu.style.borderRadius = '4px';
+        menu.style.padding = '4px 0';
+        menu.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
+        menu.style.zIndex = '10000';
+        menu.style.minWidth = '120px';
+
+        const menuItems = [
+            { text: 'Close', action: () => closeTab(tabId) },
+            { text: 'Close Others', action: () => closeOtherTabs(tabId) },
+            { text: 'Close All', action: () => closeAllTabs() }
+        ];
+
+        menuItems.forEach(item => {
+            const menuItem = document.createElement('div');
+            menuItem.className = 'tab-context-menu-item';
+            menuItem.textContent = item.text;
+            menuItem.style.padding = '6px 12px';
+            menuItem.style.cursor = 'pointer';
+            menuItem.style.color = 'var(--vscode-menu-foreground)';
+            
+            menuItem.addEventListener('mouseenter', () => {
+                menuItem.style.backgroundColor = 'var(--vscode-menu-selectionBackground)';
+                menuItem.style.color = 'var(--vscode-menu-selectionForeground)';
+            });
+            
+            menuItem.addEventListener('mouseleave', () => {
+                menuItem.style.backgroundColor = 'transparent';
+                menuItem.style.color = 'var(--vscode-menu-foreground)';
+            });
+            
+            menuItem.addEventListener('click', (e) => {
+                e.stopPropagation();
+                item.action();
+                menu.remove();
+            });
+            
+            menu.appendChild(menuItem);
+        });
+
+        document.body.appendChild(menu);
+
+        // Close menu when clicking outside
+        const closeMenu = (e) => {
+            if (!menu.contains(e.target)) {
+                menu.remove();
+                document.removeEventListener('click', closeMenu);
+            }
+        };
+        setTimeout(() => document.addEventListener('click', closeMenu), 10);
+    }
+
+    function closeOtherTabs(keepTabId) {
+        const tabsToClose = tabs.filter(tab => tab.id !== keepTabId);
+        tabsToClose.forEach(tab => closeTab(tab.id));
+    }
+
+    function closeAllTabs() {
+        const tabsToClose = [...tabs]; // Create a copy since we'll be modifying the array
+        tabsToClose.forEach(tab => closeTab(tab.id));
+    }
+
+    function reuseOrCreateActiveTab(query, title) {
+        // If there's an active tab, reuse it by clearing its content and updating it
+        if (activeTabId && tabs.find(t => t.id === activeTabId)) {
+            console.log(`Reusing active tab: ${activeTabId}`);
+            
+            // Update the tab title and query
+            const activeTab = tabs.find(t => t.id === activeTabId);
+            if (activeTab) {
+                activeTab.query = query;
+                activeTab.title = title;
+                
+                // Update the tab element title
+                const tabElement = document.querySelector(`.tab[data-tab-id="${activeTabId}"]`);
+                if (tabElement) {
+                    const titleSpan = tabElement.querySelector('.tab-title');
+                    if (titleSpan) {
+                        titleSpan.textContent = title;
+                        titleSpan.title = query;
+                    }
+                }
+            }
+            
+            return activeTabId;
+        }
+        
+        // No active tab, create a new one
+        console.log("No active tab found, creating new tab");
+        return createTab(query, title);
+    }
+
+    function getOrCreateActiveTab(tabId, query, title) {
+        // If there's an active tab, return its ID, otherwise create a new one
+        if (activeTabId && tabs.find(t => t.id === activeTabId)) {
+            return activeTabId;
+        }
+        
+        // No active tab, create the one with the provided ID
+        return createTab(query, title, tabId);
     }
 
     // Add event listener for new tab button
@@ -371,7 +494,7 @@ if (typeof agGrid === 'undefined') {
     }
 
     // Copy first N rows to clipboard
-    function copyFirstNRows(gridApi, rowCount = 5, format = 'csv') {
+    function copyFirstNRows(gridApi, rowCount = 5, format = 'tsv') {
         // Get all displayed rows (respecting filters and sorting)
         const nodes = [];
         gridApi.forEachNodeAfterFilterAndSort((node, index) => {
@@ -463,7 +586,7 @@ if (typeof agGrid === 'undefined') {
     }
 
     // Copy data to clipboard with format detection
-    function copyToClipboard(gridApi, selectedOnly = true, format = 'csv') {
+    function copyToClipboard(gridApi, selectedOnly = true, format = 'tsv') {
         const data = exportDataToFormat(gridApi, format, selectedOnly);
         if (!data) {
             const message = selectedOnly ? 'No rows selected for copying.' : 'No data available for copying.';
@@ -690,7 +813,7 @@ if (typeof agGrid === 'undefined') {
             elements.copyButton.style.display = (totalRowsInFirstBatch > 0) ? 'inline-block' : 'none';
             elements.copyButton.onclick = () => {
                 if (tab.gridApi) {
-                    copyFirstNRows(tab.gridApi, 5, 'csv'); // Copy first 5 rows as CSV
+                    copyFirstNRows(tab.gridApi, 5, 'tsv'); // Copy first 5 rows as TSV
                 } else {
                     vscode.postMessage({ command: 'alert', text: 'Grid not available for copying.' });
                 }
@@ -706,7 +829,7 @@ if (typeof agGrid === 'undefined') {
             
             elements.copyAllButton.onclick = () => {
                 if (tab.gridApi) {
-                    copyToClipboard(tab.gridApi, false, 'csv'); // Copy all displayed rows as CSV
+                    copyToClipboard(tab.gridApi, false, 'tsv'); // Copy all displayed rows as TSV
                 } else {
                     vscode.postMessage({ command: 'alert', text: 'Grid not available for copying.' });
                 }
@@ -761,13 +884,13 @@ if (typeof agGrid === 'undefined') {
 
                 if (isGridFocused) {
                     // Enhanced keyboard copy with format support
-                    // Default to CSV, but could be extended to detect modifier keys for different formats
-                    // e.g., Ctrl+Shift+C for JSON, Ctrl+Alt+C for TSV
-                    let format = 'csv';
+                    // Default to TSV (best for Google Sheets), but can use modifier keys for other formats
+                    // e.g., Ctrl+Shift+C for JSON, Ctrl+Alt+C for CSV
+                    let format = 'tsv';
                     if (event.shiftKey) {
                         format = 'json';
                     } else if (event.altKey) {
-                        format = 'tsv';
+                        format = 'csv';
                     }
                     
                     // Check if any rows are selected, if so copy selected, otherwise copy first 5
@@ -900,11 +1023,65 @@ if (typeof agGrid === 'undefined') {
                 }
                 break;
 
+            case 'reuseOrCreateActiveTab':
+                console.log("Received reuseOrCreateActiveTab message", message);
+                const resultTabId = reuseOrCreateActiveTab(message.query || 'New Query', message.title);
+                // Show loading state for the tab (whether reused or new)
+                const tabElements = getTabElements(resultTabId);
+                if (tabElements) {
+                    if (tabElements.loadingIndicator) tabElements.loadingIndicator.style.display = 'flex';
+                    if (tabElements.statusMessageElement) tabElements.statusMessageElement.textContent = 'Executing query...';
+                    if (tabElements.errorContainer) tabElements.errorContainer.style.display = 'none';
+                    // Clear previous results
+                    if (tabElements.gridElement) {
+                        const existingTab = tabs.find(t => t.id === resultTabId);
+                        if (existingTab && existingTab.gridApi) {
+                            existingTab.gridApi.setGridOption('rowData', []);
+                            existingTab.gridApi.showLoadingOverlay();
+                        }
+                    }
+                }
+                break;
+
+            case 'getOrCreateActiveTab':
+                console.log("Received getOrCreateActiveTab message", message);
+                getOrCreateActiveTab(message.tabId, message.query || 'New Query', message.title);
+                break;
+
+            case 'closeActiveTab':
+                console.log("Received closeActiveTab message");
+                if (activeTabId) {
+                    closeTab(activeTabId);
+                }
+                break;
+
+            case 'closeOtherTabs':
+                console.log("Received closeOtherTabs message");
+                if (activeTabId) {
+                    closeOtherTabs(activeTabId);
+                }
+                break;
+
+            case 'closeAllTabs':
+                console.log("Received closeAllTabs message");
+                closeAllTabs();
+                break;
+
             case 'showLoading':
                 console.log("Received showLoading message", message);
                 
-                // Find or create the tab with the specific ID
-                if (message.tabId) {
+                // Handle placeholder ID for reused tabs
+                if (message.tabId === 'active-tab-placeholder') {
+                    // Use the current active tab
+                    if (activeTabId && tabs.find(t => t.id === activeTabId)) {
+                        currentTab = tabs.find(t => t.id === activeTabId);
+                        elements = getTabElements(activeTabId);
+                    } else {
+                        console.warn("Active tab placeholder used but no active tab found");
+                        break;
+                    }
+                } else if (message.tabId) {
+                    // Find or create the tab with the specific ID
                     currentTab = tabs.find(t => t.id === message.tabId);
                     if (!currentTab) {
                         // Create tab with the specific ID if it doesn't exist
@@ -932,8 +1109,18 @@ if (typeof agGrid === 'undefined') {
                 console.log(`Truncated: ${message.data.wasTruncated}, Total in batch: ${message.data.totalRowsInFirstBatch}`);
                 console.log(`TabId: ${message.tabId}`);
                 
-                // Find or create the tab with the specific ID
-                if (message.tabId) {
+                // Handle placeholder ID for reused tabs
+                if (message.tabId === 'active-tab-placeholder') {
+                    // Use the current active tab
+                    if (activeTabId && tabs.find(t => t.id === activeTabId)) {
+                        currentTab = tabs.find(t => t.id === activeTabId);
+                        elements = getTabElements(activeTabId);
+                    } else {
+                        console.warn("Active tab placeholder used but no active tab found");
+                        break;
+                    }
+                } else if (message.tabId) {
+                    // Find or create the tab with the specific ID
                     currentTab = tabs.find(t => t.id === message.tabId);
                     if (!currentTab) {
                         // Create tab with the specific ID if it doesn't exist
@@ -953,6 +1140,7 @@ if (typeof agGrid === 'undefined') {
                 
                 try {
                     if (currentTab.gridApi) currentTab.gridApi.hideOverlay(); // Hide loading overlay
+                    if (elements.loadingIndicator) elements.loadingIndicator.style.display = 'none'; // Hide loading indicator
                     initializeGrid(
                         currentTab.id,
                         message.data.columns, 
@@ -965,6 +1153,7 @@ if (typeof agGrid === 'undefined') {
                 } catch (e) {
                     console.error("Error initializing grid:", e);
                     if (currentTab.gridApi) currentTab.gridApi.hideOverlay();
+                    if (elements.loadingIndicator) elements.loadingIndicator.style.display = 'none'; // Hide loading indicator
                     if (elements.errorContainer) {
                         elements.errorContainer.textContent = `Error displaying results: ${e.message}`;
                         elements.errorContainer.style.display = 'block';
@@ -976,8 +1165,18 @@ if (typeof agGrid === 'undefined') {
             case 'queryError':
                 console.error("Received queryError:", message.error);
                 
-                // Find or create the tab with the specific ID
-                if (message.tabId) {
+                // Handle placeholder ID for reused tabs
+                if (message.tabId === 'active-tab-placeholder') {
+                    // Use the current active tab
+                    if (activeTabId && tabs.find(t => t.id === activeTabId)) {
+                        currentTab = tabs.find(t => t.id === activeTabId);
+                        elements = getTabElements(activeTabId);
+                    } else {
+                        console.warn("Active tab placeholder used but no active tab found");
+                        break;
+                    }
+                } else if (message.tabId) {
+                    // Find or create the tab with the specific ID
                     currentTab = tabs.find(t => t.id === message.tabId);
                     if (!currentTab) {
                         // Create tab with the specific ID if it doesn't exist
@@ -994,6 +1193,7 @@ if (typeof agGrid === 'undefined') {
                     currentTab.gridApi.hideOverlay();
                 }
                 if (elements) {
+                    if (elements.loadingIndicator) elements.loadingIndicator.style.display = 'none'; // Hide loading indicator
                     if (elements.errorContainer) {
                         // Build a more detailed error message
                         let errorText = `Query Error: ${message.error.message}`;

@@ -61,13 +61,27 @@ export class PrestoCodeLensProvider implements vscode.CodeLensProvider {
       // Use the line where the query starts for the CodeLens position
       const lensRange = new vscode.Range(adjustedStartPos, adjustedStartPos);
 
-      const command: vscode.Command = {
-        title: '▶️ Run Query',
-        command: 'sql.runCursorQuery',
+      // Create two commands - Run and Run (+ Tab)
+      const runCommand: vscode.Command = {
+        title: '▶️ Run',
+        command: 'sql.runQuery',
         arguments: [trimmedQuery], // Pass the identified SQL query text
       };
 
-      codeLenses.push(new vscode.CodeLens(lensRange, command));
+      const runNewTabCommand: vscode.Command = {
+        title: '▶️➕ Run (+ Tab)',
+        command: 'sql.runQueryNewTab',
+        arguments: [trimmedQuery], // Pass the identified SQL query text
+      };
+
+      codeLenses.push(new vscode.CodeLens(lensRange, runCommand));
+
+      // Create a second range for the "Run (+ Tab)" command, slightly offset
+      const newTabLensRange = new vscode.Range(
+        new vscode.Position(adjustedStartPos.line, adjustedStartPos.character + 1),
+        new vscode.Position(adjustedStartPos.line, adjustedStartPos.character + 1)
+      );
+      codeLenses.push(new vscode.CodeLens(newTabLensRange, runNewTabCommand));
 
       // Update offset for the next search
       currentOffset = endOffset;
