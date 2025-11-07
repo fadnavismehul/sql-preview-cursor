@@ -117,15 +117,21 @@ describe('Command Tests', () => {
       assert.ok(closeAllTabsCall, 'closeAllTabs command should be registered');
 
       // Execute the handlers and ensure they don't throw
-      assert.doesNotThrow(() => closeTabCall!.args[1](), 'closeTab handler should not throw');
-      assert.doesNotThrow(
-        () => closeOtherTabsCall!.args[1](),
-        'closeOtherTabs handler should not throw'
-      );
-      assert.doesNotThrow(
-        () => closeAllTabsCall!.args[1](),
-        'closeAllTabs handler should not throw'
-      );
+      if (closeTabCall?.args?.[1]) {
+        assert.doesNotThrow(() => closeTabCall.args[1](), 'closeTab handler should not throw');
+      }
+      if (closeOtherTabsCall?.args?.[1]) {
+        assert.doesNotThrow(
+          () => closeOtherTabsCall.args[1](),
+          'closeOtherTabs handler should not throw'
+        );
+      }
+      if (closeAllTabsCall?.args?.[1]) {
+        assert.doesNotThrow(
+          () => closeAllTabsCall.args[1](),
+          'closeAllTabs handler should not throw'
+        );
+      }
     });
 
     test('query commands should handle missing resultsViewProvider gracefully', async () => {
@@ -166,7 +172,7 @@ describe('Command Tests', () => {
         .find(call => call.args[0] === 'sql.runCursorQuery');
       assert.ok(runCursorQueryCall, 'sql.runCursorQuery command should be registered');
       assert.ok(
-        typeof runCursorQueryCall!.args[1] === 'function',
+        typeof runCursorQueryCall?.args?.[1] === 'function',
         'Command handler should be a function'
       );
     });

@@ -26,17 +26,17 @@ describe('CodeLens Tests', () => {
       // Verify Run command
       assert.ok(runCodeLens?.command, 'First CodeLens should have a command');
       assert.strictEqual(
-        runCodeLens.command!.title,
+        runCodeLens.command?.title,
         '▶️ Run',
         'First CodeLens should be Run command'
       );
       assert.strictEqual(
-        runCodeLens.command!.command,
+        runCodeLens.command?.command,
         'sql.runQuery',
         'First CodeLens should execute sql.runQuery'
       );
       assert.strictEqual(
-        runCodeLens.command!.arguments![0],
+        runCodeLens.command?.arguments?.[0],
         'SELECT * FROM users;',
         'Should pass trimmed query as argument'
       );
@@ -44,17 +44,17 @@ describe('CodeLens Tests', () => {
       // Verify Run (+ Tab) command
       assert.ok(runNewTabCodeLens?.command, 'Second CodeLens should have a command');
       assert.strictEqual(
-        runNewTabCodeLens.command!.title,
+        runNewTabCodeLens.command?.title,
         '▶️➕ Run (+ Tab)',
         'Second CodeLens should be Run (+ Tab) command'
       );
       assert.strictEqual(
-        runNewTabCodeLens.command!.command,
+        runNewTabCodeLens.command?.command,
         'sql.runQueryNewTab',
         'Second CodeLens should execute sql.runQueryNewTab'
       );
       assert.strictEqual(
-        runNewTabCodeLens.command!.arguments![0],
+        runNewTabCodeLens.command?.arguments?.[0],
         'SELECT * FROM users;',
         'Should pass trimmed query as argument'
       );
@@ -73,7 +73,7 @@ INSERT INTO logs (message) VALUES ('test');`;
       assert.strictEqual(codeLenses.length, 6, 'Should provide 2 CodeLenses for each of 3 queries');
 
       // Check that we have the right commands
-      const commands = codeLenses.map(lens => lens.command!.command);
+      const commands = codeLenses.map(lens => lens.command?.command).filter(Boolean);
       const runCommands = commands.filter(cmd => cmd === 'sql.runQuery');
       const runNewTabCommands = commands.filter(cmd => cmd === 'sql.runQueryNewTab');
 
@@ -98,10 +98,10 @@ SELECT COUNT(*) FROM orders;`;
       assert.strictEqual(codeLenses.length, 4, 'Should provide 2 CodeLenses for each of 2 queries');
 
       // Verify that queries are trimmed properly
-      const firstRunLens = codeLenses.find(lens => lens.command!.command === 'sql.runQuery');
+      const firstRunLens = codeLenses.find(lens => lens.command?.command === 'sql.runQuery');
       assert.ok(firstRunLens, 'Should find a Run command');
 
-      const queryArg = firstRunLens.command!.arguments![0] as string;
+      const queryArg = firstRunLens.command?.arguments?.[0] as string;
       assert.ok(queryArg.includes('SELECT * FROM users'), 'Should include the SELECT statement');
       assert.ok(queryArg.includes('WHERE active = 1'), 'Should include the WHERE clause');
       // Comments are now included in the query text, which is acceptable
@@ -135,7 +135,7 @@ SELECT COUNT(*) FROM orders;`;
       const runCodeLens = codeLenses[0];
       assert.ok(runCodeLens?.command, 'CodeLens should have a command');
       assert.strictEqual(
-        runCodeLens.command!.arguments![0],
+        runCodeLens.command?.arguments?.[0],
         'SELECT * FROM users',
         'Should handle query without semicolon'
       );
