@@ -463,7 +463,7 @@ if (typeof agGrid === 'undefined') {
                         value = '';
                     }
                     // Escape tabs and newlines for TSV
-                    rowData.push(String(value).replace(/\t/g, ' ').replace(/\r\n|\r|\n/g, ' '));
+                    rowData.push(stringifyForFlat(value).replace(/\t/g, ' ').replace(/\r\n|\r|\n/g, ' '));
                 });
                 tsvContent += rowData.join('\t') + '\n';
             });
@@ -485,7 +485,7 @@ if (typeof agGrid === 'undefined') {
                         value = '';
                     }
                     // Escape double quotes and ensure value is stringified
-                    rowData.push(`"${String(value).replace(/"/g, '""')}"`);
+                    rowData.push(`"${stringifyForFlat(value).replace(/"/g, '""')}"`);
                 });
                 csvContent += rowData.join(',') + '\n';
             });
@@ -550,7 +550,7 @@ if (typeof agGrid === 'undefined') {
                     if (value === null || typeof value === 'undefined') {
                         value = '';
                     }
-                    rowData.push(String(value).replace(/\t/g, ' ').replace(/\r\n|\r|\n/g, ' '));
+                    rowData.push(stringifyForFlat(value).replace(/\t/g, ' ').replace(/\r\n|\r|\n/g, ' '));
                 });
                 content += rowData.join('\t') + '\n';
             });
@@ -565,7 +565,7 @@ if (typeof agGrid === 'undefined') {
                     if (value === null || typeof value === 'undefined') {
                         value = '';
                     }
-                    rowData.push(`"${String(value).replace(/"/g, '""')}"`);
+                    rowData.push(`"${stringifyForFlat(value).replace(/"/g, '""')}"`);
                 });
                 content += rowData.join(',') + '\n';
             });
@@ -633,16 +633,24 @@ if (typeof agGrid === 'undefined') {
         elements.gridElement.innerHTML = '';
 
         // Transform columns for AG Grid
-        const agGridColumnDefs = columns.map(col => ({
-            headerName: col.name,
-            field: col.name,
-            floatingFilter: false, // Disabled floating filters to save space
-            headerTooltip: `${col.name} (${col.type})`, // Show type in tooltip
-            // AG Grid has built-in types for numeric columns
-            type: isNumericType(col.type) ? 'numericColumn' : undefined,
-            // For value formatting (e.g. numbers, dates) - can be added later
-            // valueFormatter: params => formatValue(params.value, col.type)
-        }));
+        const agGridColumnDefs = columns.map(col => {
+            const def = {
+                headerName: col.name,
+                field: col.name,
+                floatingFilter: false, // Disabled floating filters to save space
+                headerTooltip: `${col.name} (${col.type})`, // Show type in tooltip
+                // AG Grid has built-in types for numeric columns
+                type: isNumericType(col.type) ? 'numericColumn' : undefined,
+            };
+
+            // Provide better display for complex types like JSON/arrays/maps/rows
+            if (isComplexType(col.type)) {
+                def.valueFormatter = (params) => formatValueForDisplay(params.value, col.type);
+                def.tooltipValueGetter = (params) => formatValueForTooltip(params.value, col.type);
+            }
+
+            return def;
+        });
 
         // Add Row Number column (pinned to the left)
         const rowNumColDef = {
@@ -684,6 +692,9 @@ if (typeof agGrid === 'undefined') {
                 // Don't set flex here - let autoSizeAllColumns() determine the width
                 suppressHeaderMenuButton: false, // Ensure menu button is available
                 menuTabs: ['filterMenuTab'], // Show only filter tab in menu
+                // Apply JSON-aware formatting for any cell; specific columns can override
+                valueFormatter: (params) => formatValueForDisplay(params.value),
+                tooltipValueGetter: (params) => formatValueForTooltip(params.value),
             },
             animateRows: true,
             enableCellTextSelection: true, // Allows text selection for copying
@@ -777,6 +788,25 @@ if (typeof agGrid === 'undefined') {
                 // If click is on the row number column, select the row
                 if (params.colDef.headerName === '#') {
                     params.node.setSelected(!params.node.isSelected());
+                }
+            },
+
+            onCellDoubleClicked: (params) => {
+                // Ignore row number column
+                if (params.colDef && params.colDef.headerName === '#') return;
+                const value = params.value;
+                if (value === null || typeof value === 'undefined') return;
+
+                let dataToShow = null;
+                if (typeof value === 'object') {
+                    dataToShow = value;
+                } else if (typeof value === 'string') {
+                    const parsed = parseIfJsonString(value);
+                    if (parsed !== null) dataToShow = parsed;
+                }
+
+                if (dataToShow !== null) {
+                    openJsonModal(dataToShow, params.colDef && (params.colDef.headerName || params.colDef.field));
                 }
             },
 
@@ -959,6 +989,149 @@ if (typeof agGrid === 'undefined') {
         }
     }
     
+    // Helper: detect complex data types that should render as JSON preview
+    function isComplexType(type) {
+        if (!type) return false;
+        const lowerType = String(type).toLowerCase();
+        return lowerType.includes('json') ||
+               lowerType.includes('array') ||
+               lowerType.includes('map') ||
+               lowerType.includes('row');
+    }
+
+    function looksLikeJsonString(value) {
+        if (typeof value !== 'string') return false;
+        const s = value.trim();
+        if (s.length < 2) return false;
+        const first = s[0];
+        const last = s[s.length - 1];
+        return (first === '{' && last === '}') || (first === '[' && last === ']');
+    }
+
+    function parseIfJsonString(value) {
+        if (!looksLikeJsonString(value)) return null;
+        try { return JSON.parse(value); } catch (e) { return null; }
+    }
+
+    // Helper: robust stringify for flat (single-line) contexts (CSV/TSV/cell preview)
+    function stringifyForFlat(value) {
+        if (value === null || typeof value === 'undefined') return '';
+        if (typeof value === 'object') {
+            try { return JSON.stringify(value); } catch (e) { return String(value); }
+        }
+        if (typeof value === 'string') {
+            const parsed = parseIfJsonString(value);
+            if (parsed !== null) {
+                try { return JSON.stringify(parsed); } catch (e) { /* fall through */ }
+            }
+        }
+        return String(value);
+    }
+
+    // Helper: format value for grid cell display
+    function formatValueForDisplay(value, type) {
+        if (value === null || typeof value === 'undefined') return '';
+        // If complex type or actual object/array, show compact JSON preview
+        if (typeof value === 'object' || isComplexType(type)) {
+            const flat = stringifyForFlat(value);
+            // Truncate long previews to keep grid readable
+            const maxLen = 200;
+            return flat.length > maxLen ? flat.slice(0, maxLen) + ' …' : flat;
+        }
+        if (typeof value === 'string') {
+            const parsed = parseIfJsonString(value);
+            if (parsed !== null) {
+                const flat = stringifyForFlat(parsed);
+                const maxLen = 200;
+                return flat.length > maxLen ? flat.slice(0, maxLen) + ' …' : flat;
+            }
+        }
+        return String(value);
+    }
+
+    // Helper: full tooltip with pretty-printed JSON where applicable
+    function formatValueForTooltip(value, type) {
+        if (value === null || typeof value === 'undefined') return '';
+        if (typeof value === 'object' || isComplexType(type)) {
+            try { return JSON.stringify(value, null, 2); } catch (e) { return stringifyForFlat(value); }
+        }
+        if (typeof value === 'string') {
+            const parsed = parseIfJsonString(value);
+            if (parsed !== null) {
+                try { return JSON.stringify(parsed, null, 2); } catch (e) { return stringifyForFlat(parsed); }
+            }
+        }
+        return String(value);
+    }
+
+    // --- Modal JSON Viewer ---
+    function openJsonModal(data, title) {
+        // Ensure overlay exists
+        let overlay = document.getElementById('json-viewer-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'json-viewer-overlay';
+            overlay.className = 'json-modal-overlay';
+
+            const modal = document.createElement('div');
+            modal.className = 'json-modal';
+
+            const header = document.createElement('div');
+            header.className = 'json-modal-header';
+            const titleEl = document.createElement('div');
+            titleEl.className = 'json-modal-title';
+            header.appendChild(titleEl);
+
+            const actions = document.createElement('div');
+            actions.className = 'json-modal-actions';
+            const copyBtn = document.createElement('button');
+            copyBtn.className = 'json-modal-button';
+            copyBtn.textContent = 'Copy';
+            const closeBtn = document.createElement('button');
+            closeBtn.className = 'json-modal-button';
+            closeBtn.textContent = 'Close';
+            actions.appendChild(copyBtn);
+            actions.appendChild(closeBtn);
+            header.appendChild(actions);
+
+            const body = document.createElement('pre');
+            body.className = 'json-modal-body';
+
+            modal.appendChild(header);
+            modal.appendChild(body);
+            overlay.appendChild(modal);
+            document.body.appendChild(overlay);
+
+            // Wire up events once
+            closeBtn.addEventListener('click', () => hideJsonModal());
+            overlay.addEventListener('click', (e) => { if (e.target === overlay) hideJsonModal(); });
+            document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideJsonModal(); });
+            copyBtn.addEventListener('click', () => {
+                try {
+                    const text = body.textContent || '';
+                    navigator.clipboard.writeText(text);
+                } catch (err) {
+                    console.error('Copy failed:', err);
+                }
+            });
+        }
+
+        // Populate and show
+        try {
+            const pretty = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+            overlay.querySelector('.json-modal-body').textContent = pretty;
+        } catch (e) {
+            overlay.querySelector('.json-modal-body').textContent = stringifyForFlat(data);
+        }
+        overlay.querySelector('.json-modal-title').textContent = title ? `Full JSON - ${title}` : 'Full JSON';
+        overlay.style.display = 'flex';
+    }
+
+    function hideJsonModal() {
+        const overlay = document.getElementById('json-viewer-overlay');
+        if (overlay) overlay.style.display = 'none';
+    }
+
     function isNumericType(type) {
         if (!type) return false;
         const lowerType = type.toLowerCase();

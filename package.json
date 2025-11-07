@@ -2,7 +2,7 @@
   "name": "sql-preview",
   "displayName": "SQL Preview",
   "description": "Run SQL queries directly from VS Code with tabbed results",
-  "version": "0.1.4",
+  "version": "0.1.6",
   "publisher": "mehul",
   "icon": "media/icon.png",
   "repository": {
@@ -222,7 +222,9 @@
     "test:all": "npm run test && npm run test:integration",
     "quality-check": "npm run type-check && npm run lint && npm run format:check",
     "quality-fix": "npm run lint:fix && npm run format",
-    "prepare": "husky install"
+    "prepare": "husky install",
+    "probe": "node scripts/probe-presto.mjs",
+    "probe:extension": "node scripts/probe-extension-path.mjs"
   },
   "devDependencies": {
     "@types/axios": "^0.9.36",
@@ -256,14 +258,12 @@
     "trino-client": "^0.2.6"
   },
   "lint-staged": {
-    "*.{ts,js}": [
+    "*.{ts,js,mjs}": [
       "eslint --fix",
-      "prettier --write",
-      "git add"
+      "prettier --write"
     ],
     "*.{json,md}": [
-      "prettier --write",
-      "git add"
+      "prettier --write"
     ]
   }
 }

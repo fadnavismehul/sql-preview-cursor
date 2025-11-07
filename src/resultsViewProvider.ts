@@ -48,31 +48,99 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    // Build resource roots with validation
+    // Build resource roots with enhanced validation for Windows compatibility
     const resourceRoots: vscode.Uri[] = [];
 
     try {
-      const mediaUri = vscode.Uri.joinPath(this._extensionUri, 'media');
-      const webviewsUri = vscode.Uri.joinPath(this._extensionUri, 'webviews');
+      // Create media and webviews URIs with enhanced validation
+      let mediaUri: vscode.Uri | undefined;
+      let webviewsUri: vscode.Uri | undefined;
 
-      // Only add URIs that have valid normalized paths
-      if (mediaUri && mediaUri.fsPath && path.normalize(mediaUri.fsPath).trim() !== '') {
+      // Attempt to create media URI with validation
+      try {
+        const mediaPath = 'media';
+        if (mediaPath && mediaPath.trim() !== '') {
+          mediaUri = vscode.Uri.joinPath(this._extensionUri, mediaPath);
+          // Validate the resulting URI has a valid path
+          if (!mediaUri || !mediaUri.fsPath || mediaUri.fsPath.trim() === '') {
+            this._outputChannel.appendLine('WARNING: Media URI creation resulted in empty path');
+            mediaUri = undefined;
+          } else {
+            const normalizedMediaPath = path.normalize(mediaUri.fsPath);
+            if (!normalizedMediaPath || normalizedMediaPath.trim() === '') {
+              this._outputChannel.appendLine(
+                'WARNING: Media URI path normalization resulted in empty path'
+              );
+              mediaUri = undefined;
+            }
+          }
+        }
+      } catch (error) {
+        this._outputChannel.appendLine(`WARNING: Failed to create media URI: ${error}`);
+        mediaUri = undefined;
+      }
+
+      // Attempt to create webviews URI with validation
+      try {
+        const webviewsPath = 'webviews';
+        if (webviewsPath && webviewsPath.trim() !== '') {
+          webviewsUri = vscode.Uri.joinPath(this._extensionUri, webviewsPath);
+          // Validate the resulting URI has a valid path
+          if (!webviewsUri || !webviewsUri.fsPath || webviewsUri.fsPath.trim() === '') {
+            this._outputChannel.appendLine('WARNING: Webviews URI creation resulted in empty path');
+            webviewsUri = undefined;
+          } else {
+            const normalizedWebviewsPath = path.normalize(webviewsUri.fsPath);
+            if (!normalizedWebviewsPath || normalizedWebviewsPath.trim() === '') {
+              this._outputChannel.appendLine(
+                'WARNING: Webviews URI path normalization resulted in empty path'
+              );
+              webviewsUri = undefined;
+            }
+          }
+        }
+      } catch (error) {
+        this._outputChannel.appendLine(`WARNING: Failed to create webviews URI: ${error}`);
+        webviewsUri = undefined;
+      }
+
+      // Only add URIs that passed all validation checks
+      if (mediaUri) {
         resourceRoots.push(mediaUri);
+        this._outputChannel.appendLine(`Added media resource root: ${mediaUri.fsPath}`);
       }
-      if (webviewsUri && webviewsUri.fsPath && path.normalize(webviewsUri.fsPath).trim() !== '') {
+      if (webviewsUri) {
         resourceRoots.push(webviewsUri);
+        this._outputChannel.appendLine(`Added webviews resource root: ${webviewsUri.fsPath}`);
       }
 
-      // Ensure we have at least one valid resource root
+      // Provide fallback behavior if no resource roots were created
       if (resourceRoots.length === 0) {
         this._outputChannel.appendLine(
-          'WARNING: No valid resource roots found, webview resources may not load'
+          'WARNING: No valid resource roots created, attempting to use extension URI directly'
         );
+        // As a fallback, use the extension URI itself as a resource root
+        if (
+          this._extensionUri &&
+          this._extensionUri.fsPath &&
+          this._extensionUri.fsPath.trim() !== ''
+        ) {
+          resourceRoots.push(this._extensionUri);
+          this._outputChannel.appendLine(
+            `Using extension URI as fallback resource root: ${this._extensionUri.fsPath}`
+          );
+        } else {
+          this._outputChannel.appendLine(
+            'ERROR: Extension URI is also invalid, webview resources will not load properly'
+          );
+        }
       }
     } catch (error) {
       this._outputChannel.appendLine(`ERROR: Error creating resource URIs: ${error}`);
-      vscode.window.showErrorMessage('SQL Preview: Failed to setup webview resources');
-      return;
+      // Don't return here - continue with empty resource roots rather than failing completely
+      this._outputChannel.appendLine(
+        'Continuing with empty resource roots, some webview resources may not load'
+      );
     }
 
     webviewView.webview.options = {
@@ -355,7 +423,7 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
     // Nonce for Content Security Policy
     const nonce = getNonce();
 
-    // Validate extension URI and create resource URIs with error handling
+    // Validate extension URI and create resource URIs with enhanced error handling for Windows
     let scriptUri: vscode.Uri | undefined;
     let stylesUri: vscode.Uri | undefined;
 
@@ -374,25 +442,84 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
         throw new Error('Normalized extension path is empty');
       }
 
-      const scriptPath = vscode.Uri.joinPath(
-        this._extensionUri,
-        'webviews',
-        'results',
-        'resultsView.js'
-      );
-      const stylesPath = vscode.Uri.joinPath(
-        this._extensionUri,
-        'webviews',
-        'results',
-        'resultsView.css'
-      );
+      // Create script URI with enhanced validation
+      try {
+        const scriptPath = vscode.Uri.joinPath(
+          this._extensionUri,
+          'webviews',
+          'results',
+          'resultsView.js'
+        );
 
-      // Only create webview URIs if the paths are valid and normalized
-      if (scriptPath && scriptPath.fsPath && path.normalize(scriptPath.fsPath).trim() !== '') {
-        scriptUri = webview.asWebviewUri(scriptPath);
+        if (scriptPath && scriptPath.fsPath && scriptPath.fsPath.trim() !== '') {
+          const normalizedScriptPath = path.normalize(scriptPath.fsPath);
+          if (normalizedScriptPath && normalizedScriptPath.trim() !== '') {
+            try {
+              scriptUri = webview.asWebviewUri(scriptPath);
+              // Validate the resulting webview URI
+              if (!scriptUri || !scriptUri.toString() || scriptUri.toString().trim() === '') {
+                this._outputChannel.appendLine(
+                  'WARNING: Script webview URI creation resulted in empty URI'
+                );
+                scriptUri = undefined;
+              }
+            } catch (webviewError) {
+              this._outputChannel.appendLine(
+                `WARNING: Failed to create script webview URI: ${webviewError}`
+              );
+              scriptUri = undefined;
+            }
+          } else {
+            this._outputChannel.appendLine(
+              'WARNING: Script path normalization resulted in empty path'
+            );
+          }
+        } else {
+          this._outputChannel.appendLine('WARNING: Script path creation resulted in invalid path');
+        }
+      } catch (scriptError) {
+        this._outputChannel.appendLine(`WARNING: Failed to create script path: ${scriptError}`);
+        scriptUri = undefined;
       }
-      if (stylesPath && stylesPath.fsPath && path.normalize(stylesPath.fsPath).trim() !== '') {
-        stylesUri = webview.asWebviewUri(stylesPath);
+
+      // Create styles URI with enhanced validation
+      try {
+        const stylesPath = vscode.Uri.joinPath(
+          this._extensionUri,
+          'webviews',
+          'results',
+          'resultsView.css'
+        );
+
+        if (stylesPath && stylesPath.fsPath && stylesPath.fsPath.trim() !== '') {
+          const normalizedStylesPath = path.normalize(stylesPath.fsPath);
+          if (normalizedStylesPath && normalizedStylesPath.trim() !== '') {
+            try {
+              stylesUri = webview.asWebviewUri(stylesPath);
+              // Validate the resulting webview URI
+              if (!stylesUri || !stylesUri.toString() || stylesUri.toString().trim() === '') {
+                this._outputChannel.appendLine(
+                  'WARNING: Styles webview URI creation resulted in empty URI'
+                );
+                stylesUri = undefined;
+              }
+            } catch (webviewError) {
+              this._outputChannel.appendLine(
+                `WARNING: Failed to create styles webview URI: ${webviewError}`
+              );
+              stylesUri = undefined;
+            }
+          } else {
+            this._outputChannel.appendLine(
+              'WARNING: Styles path normalization resulted in empty path'
+            );
+          }
+        } else {
+          this._outputChannel.appendLine('WARNING: Styles path creation resulted in invalid path');
+        }
+      } catch (stylesError) {
+        this._outputChannel.appendLine(`WARNING: Failed to create styles path: ${stylesError}`);
+        stylesUri = undefined;
       }
     } catch (error) {
       this._outputChannel.appendLine(`ERROR: Error creating webview resource URIs: ${error}`);

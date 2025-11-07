@@ -140,15 +140,27 @@ export function activate(context: vscode.ExtensionContext) {
   }
 
   try {
-    // Register the Results Webview View Provider
+    // Register the Results Webview View Provider with enhanced error handling
     resultsViewProvider = new ResultsViewProvider(context.extensionUri);
-    context.subscriptions.push(
-      vscode.window.registerWebviewViewProvider(ResultsViewProvider.viewType, resultsViewProvider)
+
+    // Attempt to register the webview provider with additional validation
+    const webviewRegistration = vscode.window.registerWebviewViewProvider(
+      ResultsViewProvider.viewType,
+      resultsViewProvider
     );
+
+    context.subscriptions.push(webviewRegistration);
+    outputChannel.appendLine('Successfully registered webview view provider');
   } catch (error) {
     outputChannel.appendLine(`ERROR: Error registering webview provider: ${error}`);
-    vscode.window.showErrorMessage(`SQL Preview: Failed to register webview provider: ${error}`);
-    return;
+
+    // Instead of completely failing, show warning and continue with reduced functionality
+    vscode.window.showWarningMessage(
+      `SQL Preview: Webview provider registration failed (${error}). Some features may not work properly. Please check the SQL Preview output channel for details.`
+    );
+
+    // Continue execution to at least enable other features like CodeLens
+    outputChannel.appendLine('Continuing extension activation with reduced functionality...');
   }
 
   // Register the CodeLens provider for SQL files
@@ -240,7 +252,12 @@ export function activate(context: vscode.ExtensionContext) {
   // Helper function for executing queries with different tab behaviors
   async function executeQuery(sqlFromCodeLens?: string, createNewTab = true) {
     if (!resultsViewProvider) {
-      vscode.window.showErrorMessage('Results view is not available.');
+      vscode.window.showErrorMessage(
+        'SQL Preview: Results view is not available. The webview provider failed to initialize, possibly due to path issues on Windows. Please check the SQL Preview output channel for details.'
+      );
+      outputChannel.appendLine(
+        'ERROR: Query execution attempted but resultsViewProvider is not available'
+      );
       return;
     }
 
@@ -390,12 +407,40 @@ export function activate(context: vscode.ExtensionContext) {
       let totalRowsFetched = 0;
       let currentPageUri: string | undefined = undefined; // Declare higher scope
 
-      // --- Execute Query and Fetch Pages ---
-      // console.log('Attempting to fetch first page...');
-      const queryIter = await client.query(sql);
-      const firstIteration = await queryIter.next();
-      rawResultObject = firstIteration.value;
-      // console.log(`First iteration result: done = ${firstIteration.done}`);
+      // --- Execute Query (Direct HTTP path to support Porta/Proxies) ---
+      try {
+        outputChannel.appendLine('[SQL Preview] Executing via direct HTTP POST /v1/statement');
+        const statementUrl = `${ssl ? 'https' : 'http'}://${host}:${port}/v1/statement`;
+        const httpsAgent = ssl ? createHttpsAgent(sslVerify) : undefined;
+        const headers: Record<string, string> = {
+          'Content-Type': 'text/plain',
+          'X-Trino-User': user,
+          'X-Trino-Catalog': catalog || 'hive',
+          'X-Trino-Schema': schema || 'default',
+          'X-Trino-Source': 'sql-preview',
+          // Presto headers for compatibility
+          'X-Presto-User': user,
+          'X-Presto-Catalog': catalog || 'hive',
+          'X-Presto-Schema': schema || 'default',
+          'X-Presto-Source': 'sql-preview',
+        };
+        if (basicAuthHeader) {
+          headers['Authorization'] = basicAuthHeader;
+        }
+
+        const directResp = await axios.post(statementUrl, sql, {
+          headers,
+          ...(httpsAgent ? { httpsAgent } : {}),
+        });
+        rawResultObject = directResp.data as TrinoQueryResponse;
+      } catch (directError) {
+        // Fall back to the client if direct HTTP path fails for reasons unrelated
+        // to the original issue (e.g., network hiccup). This keeps behavior robust.
+        outputChannel.appendLine('[SQL Preview] Direct POST failed, falling back to trino-client');
+        const queryIter = await client.query(sql);
+        const firstIteration = await queryIter.next();
+        rawResultObject = firstIteration.value;
+      }
 
       // Log the raw response for debugging
       // console.log('Raw response structure:', {
@@ -463,7 +508,7 @@ export function activate(context: vscode.ExtensionContext) {
 
       // --- Fetch subsequent pages if needed ---
       currentPageUri = nextUriFromResponse; // Initialize before loop
-      if (columns && columns.length > 0) {
+      if (currentPageUri || (columns && columns.length > 0)) {
         let pageCount = 1;
         const httpsAgent = createHttpsAgent(sslVerify);
 
@@ -506,6 +551,9 @@ export function activate(context: vscode.ExtensionContext) {
               return;
             }
 
+            if (!columns && pageData?.columns && Array.isArray(pageData.columns)) {
+              columns = pageData.columns.map(col => ({ name: col.name, type: col.type }));
+            }
             if (pageData?.data && Array.isArray(pageData.data)) {
               results.push(...pageData.data);
               totalRowsFetched += pageData.data.length;
@@ -767,17 +815,32 @@ async function executeFullExport(
 
         progress.report({ increment: 20, message: 'Executing query...' });
 
-        // Create client and execute query
-        const client = Trino.create(clientOptions);
-        const queryIter = await client.query(query);
+        // Execute first page via direct POST (matches runtime path)
+        const statementUrl = `${ssl ? 'https' : 'http'}://${host}:${port}/v1/statement`;
+        const httpsAgent = ssl ? createHttpsAgent(sslVerify) : undefined;
+        const headers: Record<string, string> = {
+          'Content-Type': 'text/plain',
+          'X-Trino-User': user,
+          'X-Trino-Catalog': catalog || 'hive',
+          'X-Trino-Schema': schema || 'default',
+          'X-Trino-Source': 'sql-preview',
+          'X-Presto-User': user,
+          'X-Presto-Catalog': catalog || 'hive',
+          'X-Presto-Schema': schema || 'default',
+          'X-Presto-Source': 'sql-preview',
+        };
+        if (basicAuthHeader) {
+          headers['Authorization'] = basicAuthHeader;
+        }
+
+        const initialResp = await axios.post(statementUrl, query, {
+          headers,
+          ...(httpsAgent ? { httpsAgent } : {}),
+        });
 
         const allRows: unknown[][] = [];
         let columns: Array<{ name: string; type: string }> | undefined;
-        let rawResultObject: TrinoQueryResponse;
-
-        // Fetch first page
-        const firstIteration = await queryIter.next();
-        rawResultObject = firstIteration.value;
+        let rawResultObject: TrinoQueryResponse = initialResp.data as TrinoQueryResponse;
 
         if (rawResultObject.error) {
           throw new Error(`Query failed: ${rawResultObject.error.message || 'Unknown error'}`);
@@ -792,7 +855,7 @@ async function executeFullExport(
         }
 
         // Fetch additional pages if they exist
-        while (rawResultObject.nextUri && !firstIteration.done) {
+        while (rawResultObject.nextUri) {
           progress.report({
             increment: Math.min(60, 20 + (allRows.length / 1000) * 20),
             message: `Fetching results... (${allRows.length} rows)`,

@@ -514,3 +514,70 @@ body.vscode-high-contrast .error-message {
     background-color: var(--vscode-menu-selectionBackground);
     color: var(--vscode-menu-selectionForeground);
 } 
+
+/* JSON modal styles */
+.json-modal-overlay {
+    position: fixed;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.5);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 100000; /* above context menus */
+}
+
+.json-modal {
+    background: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+    border: 1px solid var(--vscode-editorWidget-border);
+    border-radius: 6px;
+    width: 70vw;
+    max-width: 1200px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+
+.json-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--vscode-editorWidget-border);
+}
+
+.json-modal-title {
+    font-weight: 600;
+}
+
+.json-modal-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.json-modal-button {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: 1px solid var(--vscode-button-border, transparent);
+    padding: 4px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.json-modal-button:hover {
+    background-color: var(--vscode-button-hoverBackground);
+}
+
+.json-modal-body {
+    margin: 0;
+    padding: 12px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: var(--vscode-editor-font-family, 'Consolas', 'Courier New', monospace);
+    font-size: var(--sql-preview-font-size, var(--vscode-editor-font-size));
+}

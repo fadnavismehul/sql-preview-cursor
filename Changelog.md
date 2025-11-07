@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+## [0.1.6] - 2025-11-07
+
+### Fixed
+
+- Work around Porta returning "Empty query not supported" for valid SQL when using the Trino client. The extension now executes the first page via direct HTTPS POST to `/v1/statement` with Trino and Presto headers, then follows `nextUri` using HTTP GET. This mirrors clients like DataGrip and restores compatibility.
+- Pagination: continue even when `columns` are not present in the first response (some clusters send columns on later pages).
+- Export flow aligned to the same direct POST + pagination path for consistency.
+
+### Added
+
+- Probes to diagnose connectivity quickly:
+  - `npm run probe` (multiple HTTP variants)
+  - `npm run probe:extension` (matches extension path end-to-end)
+- `.env.local` workflow (git-ignored) and `env.example` for credentials during local probes.
+
 ### Added
 
 - Initial VS Code extension setup for Presto/Trino database connections
