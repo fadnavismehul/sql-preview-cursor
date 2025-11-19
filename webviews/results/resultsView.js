@@ -655,10 +655,10 @@ if (typeof agGrid === 'undefined') {
         // Transform columns for AG Grid
         const agGridColumnDefs = columns.map(col => {
             const def = {
-                headerName: col.name + (col.type ? ` (${col.type})` : ''),
+                headerName: col.name,
                 field: col.name,
                 floatingFilter: false, // Disabled floating filters to save space
-                headerTooltip: `${col.name} (${col.type})`, // Show type in tooltip
+                headerTooltip: `Column: ${col.name}\nType: ${col.type}`, // Show type in tooltip
                 // AG Grid has built-in types for numeric columns
                 type: isNumericType(col.type) ? 'numericColumn' : undefined,
             };
@@ -717,7 +717,7 @@ if (typeof agGrid === 'undefined') {
                 tooltipValueGetter: (params) => formatValueForTooltip(params.value),
             },
             animateRows: true,
-            enableCellTextSelection: true, // Allows text selection for copying
+            enableCellTextSelection: false, // Disable text selection to fix drag behavior (standard AG Grid)
             ensureDomOrder: true, // Important for text selection
             // For clipboard - AG Grid Community has basic copy, Enterprise has more features
             // suppressClipboardPaste: true, // if you don't want paste
