@@ -729,8 +729,11 @@ if (typeof agGrid === 'undefined') {
 
             rowSelection: 'multiple', // Enable row selection
             suppressRowClickSelection: true, // We'll handle selection via cell click on the row number column
+            rowSelection: 'multiple', // Enable row selection
+            suppressRowClickSelection: true, // We'll handle selection via cell click on the row number column
             suppressMenuHide: false, // Allow menu to show/hide normally
             alwaysShowHorizontalScroll: false, // Only show horizontal scroll when needed
+            preventDefaultOnContextMenu: true, // Prevent default browser context menu to show our custom one
 
             icons: {
                 // All custom SVGs are removed.
@@ -809,6 +812,11 @@ if (typeof agGrid === 'undefined') {
                 if (params.colDef.headerName === '#') {
                     params.node.setSelected(!params.node.isSelected());
                 }
+            },
+
+            onCellContextMenu: (params) => {
+                // Show custom context menu
+                showGridContextMenu(params, tabId);
             },
 
             onCellDoubleClicked: (params) => {
@@ -1085,6 +1093,132 @@ if (typeof agGrid === 'undefined') {
     }
 
     // --- Modal JSON Viewer ---
+    function showGridContextMenu(params, tabId) {
+        const event = params.event;
+        const value = params.value;
+        const colId = params.column.getColId();
+        const rowIndex = params.node.rowIndex;
+
+        // Remove any existing context menu
+        const existingMenu = document.querySelector('.tab-context-menu');
+        if (existingMenu) {
+            existingMenu.remove();
+        }
+
+        // Create context menu
+        const menu = document.createElement('div');
+        menu.className = 'tab-context-menu';
+        menu.style.position = 'fixed';
+        menu.style.left = `${event.clientX}px`;
+        menu.style.top = `${event.clientY}px`;
+        menu.style.backgroundColor = 'var(--vscode-menu-background)';
+        menu.style.border = '1px solid var(--vscode-menu-border)';
+        menu.style.padding = '4px 0';
+        menu.style.zIndex = '1000';
+        menu.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.15)';
+        menu.style.color = 'var(--vscode-menu-foreground)';
+        menu.style.fontFamily = 'var(--vscode-font-family)';
+        menu.style.fontSize = 'var(--vscode-font-size)';
+
+        const menuItems = [
+            {
+                text: 'Copy Cell Value',
+                action: () => {
+                    const textToCopy = (value === null || value === undefined) ? '' : String(value);
+                    navigator.clipboard.writeText(textToCopy)
+                        .then(() => vscode.postMessage({ command: 'showInfo', text: 'Cell value copied.' }))
+                        .catch(err => console.error('Failed to copy cell:', err));
+                }
+            },
+            {
+                text: 'Copy Row',
+                action: () => {
+                    // Copy the specific row that was clicked
+                    const rowData = params.node.data;
+                    // We need to format it similar to how exportDataToFormat does
+                    // But for a single row, we can just grab values
+                    // Or better, use grid API to export just this node if possible, 
+                    // but API usually exports selection or all.
+                    // Let's manually construct TSV for this row
+                    const columns = params.api.getAllDisplayedColumns();
+                    const rowValues = columns
+                        .filter(col => col.getColDef().headerName !== '#') // Exclude row number
+                        .map(col => {
+                            const val = params.api.getValue(col, params.node);
+                            return stringifyForFlat(val);
+                        });
+
+                    navigator.clipboard.writeText(rowValues.join('\t'))
+                        .then(() => vscode.postMessage({ command: 'showInfo', text: 'Row copied.' }))
+                        .catch(err => console.error('Failed to copy row:', err));
+                }
+            },
+            {
+                text: 'Copy Column',
+                action: () => {
+                    // Copy all values in this column
+                    const nodes = [];
+                    params.api.forEachNodeAfterFilterAndSort(node => nodes.push(node));
+
+                    const colValues = nodes.map(node => {
+                        const val = params.api.getValue(params.column, node);
+                        return stringifyForFlat(val);
+                    });
+
+                    navigator.clipboard.writeText(colValues.join('\n'))
+                        .then(() => vscode.postMessage({ command: 'showInfo', text: 'Column copied.' }))
+                        .catch(err => console.error('Failed to copy column:', err));
+                }
+            }
+        ];
+
+        // Add Copy Selected Rows if multiple rows are selected
+        const selectedNodes = params.api.getSelectedNodes();
+        if (selectedNodes.length > 0) {
+            menuItems.push({
+                text: `Copy Selected Rows (${selectedNodes.length})`,
+                action: () => copyToClipboard(params.api, true, 'tsv')
+            });
+        }
+
+        menuItems.forEach(item => {
+            const menuItem = document.createElement('div');
+            menuItem.className = 'context-menu-item';
+            menuItem.style.padding = '4px 8px';
+            menuItem.style.cursor = 'pointer';
+            menuItem.textContent = item.text;
+
+            menuItem.addEventListener('mouseenter', () => {
+                menuItem.style.backgroundColor = 'var(--vscode-menu-selectionBackground)';
+                menuItem.style.color = 'var(--vscode-menu-selectionForeground)';
+            });
+
+            menuItem.addEventListener('mouseleave', () => {
+                menuItem.style.backgroundColor = 'transparent';
+                menuItem.style.color = 'var(--vscode-menu-foreground)';
+            });
+
+            menuItem.addEventListener('click', (e) => {
+                e.stopPropagation();
+                item.action();
+                menu.remove();
+            });
+
+            menu.appendChild(menuItem);
+        });
+
+        document.body.appendChild(menu);
+
+        // Close menu when clicking outside
+        const closeMenu = (e) => {
+            if (!menu.contains(e.target)) {
+                menu.remove();
+                document.removeEventListener('click', closeMenu);
+            }
+        };
+        setTimeout(() => document.addEventListener('click', closeMenu), 10);
+    }
+
     function openJsonModal(data, title) {
         // Ensure overlay exists
         let overlay = document.getElementById('json-viewer-overlay');
