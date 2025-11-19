@@ -711,7 +711,7 @@ if (typeof agGrid === 'undefined') {
                 minWidth: 80, // minimum width to prevent columns from becoming too small
                 // Don't set flex here - let autoSizeAllColumns() determine the width
                 suppressHeaderMenuButton: false, // Ensure menu button is available
-                menuTabs: ['filterMenuTab'], // Show only filter tab in menu
+                // menuTabs: ['filterMenuTab'], // REMOVED: Restore full menu (General, Filter, Columns) to enable Pinning/Autosize
                 // Apply JSON-aware formatting for any cell; specific columns can override
                 valueFormatter: (params) => formatValueForDisplay(params.value),
                 tooltipValueGetter: (params) => formatValueForTooltip(params.value),
@@ -1181,7 +1181,35 @@ if (typeof agGrid === 'undefined') {
             });
         }
 
+        // Add Separator
+        menuItems.push({ separator: true });
+
+        // Add Grid Management Options
+        menuItems.push({
+            text: 'Auto Size All Columns',
+            action: () => {
+                params.api.autoSizeAllColumns();
+                vscode.postMessage({ command: 'showInfo', text: 'Columns auto-sized.' });
+            }
+        });
+
+        menuItems.push({
+            text: 'Reset Columns',
+            action: () => {
+                params.api.resetColumnState();
+                vscode.postMessage({ command: 'showInfo', text: 'Column state reset.' });
+            }
+        });
+
         menuItems.forEach(item => {
+            if (item.separator) {
+                const separator = document.createElement('div');
+                separator.style.borderTop = '1px solid var(--vscode-menu-separatorBackground)';
+                separator.style.margin = '4px 0';
+                menu.appendChild(separator);
+                return;
+            }
+
             const menuItem = document.createElement('div');
             menuItem.className = 'context-menu-item';
             menuItem.style.padding = '4px 8px';
