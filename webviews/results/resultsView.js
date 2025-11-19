@@ -655,7 +655,7 @@ if (typeof agGrid === 'undefined') {
         // Transform columns for AG Grid
         const agGridColumnDefs = columns.map(col => {
             const def = {
-                headerName: col.name,
+                headerName: col.name + (col.type ? ` (${col.type})` : ''),
                 field: col.name,
                 floatingFilter: false, // Disabled floating filters to save space
                 headerTooltip: `${col.name} (${col.type})`, // Show type in tooltip
@@ -1429,6 +1429,7 @@ if (typeof agGrid === 'undefined') {
                     if (elements.truncationWarningElement) elements.truncationWarningElement.style.display = 'none';
                     if (elements.copyButton) elements.copyButton.style.display = 'none';
                     if (elements.copyAllButton) elements.copyAllButton.style.display = 'none';
+                    if (elements.copyQueryButton) elements.copyQueryButton.style.display = 'none';
                     if (elements.exportButton) elements.exportButton.style.display = 'none';
                     if (elements.exportFullButton) elements.exportFullButton.style.display = 'none';
                     if (elements.errorContainer) elements.errorContainer.style.display = 'none';
