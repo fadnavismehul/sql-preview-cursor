@@ -134,4 +134,70 @@ describe('ResultsViewProvider Tests', () => {
       message,
     });
   });
+
+  test('should create a new tab', async () => {
+    const query = 'SELECT * FROM new_tab';
+    const title = 'New Query Tab';
+
+    resultsViewProvider.createTab(query, title);
+
+    expect(mockWebviewPanel.webview.postMessage).toHaveBeenCalledWith({
+      type: 'createTab',
+      query,
+      title,
+    });
+  });
+
+  test('should create a new tab with specific ID', async () => {
+    const tabId = 'tab-custom-id';
+    const query = 'SELECT * FROM custom_id';
+    const title = 'Custom ID Tab';
+
+    resultsViewProvider.createTabWithId(tabId, query, title);
+
+    expect(mockWebviewPanel.webview.postMessage).toHaveBeenCalledWith({
+      type: 'createTab',
+      tabId,
+      query,
+      title,
+    });
+  });
+
+  test('should get or create active tab ID', async () => {
+    const query = 'SELECT * FROM active_tab';
+    const title = 'Active Tab';
+
+    const tabId = resultsViewProvider.getOrCreateActiveTabId(query, title);
+
+    expect(tabId).toBe('active-tab-placeholder');
+    expect(mockWebviewPanel.webview.postMessage).toHaveBeenCalledWith({
+      type: 'reuseOrCreateActiveTab',
+      query,
+      title,
+    });
+  });
+
+  test('should close active tab', async () => {
+    resultsViewProvider.closeActiveTab();
+
+    expect(mockWebviewPanel.webview.postMessage).toHaveBeenCalledWith({
+      type: 'closeActiveTab',
+    });
+  });
+
+  test('should close other tabs', async () => {
+    resultsViewProvider.closeOtherTabs();
+
+    expect(mockWebviewPanel.webview.postMessage).toHaveBeenCalledWith({
+      type: 'closeOtherTabs',
+    });
+  });
+
+  test('should close all tabs', async () => {
+    resultsViewProvider.closeAllTabs();
+
+    expect(mockWebviewPanel.webview.postMessage).toHaveBeenCalledWith({
+      type: 'closeAllTabs',
+    });
+  });
 });
