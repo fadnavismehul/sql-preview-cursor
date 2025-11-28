@@ -31,7 +31,8 @@ if (typeof agGrid === 'undefined') {
                 id: tab.id,
                 title: tab.title,
                 query: tab.query,
-                data: tab.data // Store the data for restoration
+                data: tab.data, // Store the data for restoration
+                sourceFileUri: tab.sourceFileUri // Store source file URI
             })),
             activeTabId: activeTabId,
             nextTabId: nextTabId
@@ -55,7 +56,7 @@ if (typeof agGrid === 'undefined') {
 
             state.tabs.forEach(savedTab => {
                 // Recreate tab without incrementing nextTabId (and skip state updates during restore)
-                const tab = createTab(savedTab.query, savedTab.title, savedTab.id, true);
+                const tab = createTab(savedTab.query, savedTab.title, savedTab.id, true, savedTab.sourceFileUri);
 
                 // Restore data if available
                 if (savedTab.data && savedTab.data.columns && savedTab.data.rows) {
@@ -90,15 +91,13 @@ if (typeof agGrid === 'undefined') {
                 activateTab(tabs[0].id, true);
             }
 
-            // Hide no-tabs message if tabs exist
-            if (tabs.length > 0) {
-                document.getElementById('no-tabs-message').style.display = 'none';
-            }
+            // Update no-tabs message visibility
+            updateNoTabsMessageVisibility();
         }
     }
 
     // --- Tab Management Functions ---
-    function createTab(query, title, providedTabId, skipStateUpdate = false) {
+    function createTab(query, title, providedTabId, skipStateUpdate = false, sourceFileUri = null) {
         const tabId = providedTabId || `tab-${nextTabId++}`;
         const shortQuery = query.length > 50 ? query.substring(0, 50) + '...' : query;
         const tabTitle = title || `Query ${nextTabId}`;
@@ -115,7 +114,8 @@ if (typeof agGrid === 'undefined') {
             title: tabTitle,
             query: query,
             gridApi: null,
-            data: null
+            data: null,
+            sourceFileUri: sourceFileUri
         };
 
         tabs.push(tab);
@@ -178,8 +178,8 @@ if (typeof agGrid === 'undefined') {
         tabList.appendChild(tabElement);
         tabContentContainer.appendChild(tabContent);
 
-        // Hide no-tabs message
-        noTabsMessage.style.display = 'none';
+        // Update no-tabs message visibility
+        updateNoTabsMessageVisibility();
 
         // Activate the new tab
         activateTab(tabId, skipStateUpdate);
@@ -205,6 +205,12 @@ if (typeof agGrid === 'undefined') {
             tabElement.classList.add('active');
             tabContent.classList.add('active');
             activeTabId = tabId;
+
+            // Track last active tab for file
+            const tab = tabs.find(t => t.id === tabId);
+            if (tab && tab.sourceFileUri) {
+                lastActiveTabPerFile[tab.sourceFileUri] = tabId;
+            }
 
             // Save state after activating tab (unless we're restoring)
             if (!skipStateUpdate) {
@@ -238,16 +244,22 @@ if (typeof agGrid === 'undefined') {
         // If this was the active tab, activate another one
         if (activeTabId === tabId) {
             activeTabId = null;
-            if (tabs.length > 0) {
-                activateTab(tabs[Math.max(0, tabIndex - 1)].id);
-            } else {
-                // Show no-tabs message
-                noTabsMessage.style.display = 'flex';
+
+            // Find remaining visible tabs
+            const visibleTabs = tabs.filter(t => !currentFileFilter || !t.sourceFileUri || t.sourceFileUri === currentFileFilter);
+
+            if (visibleTabs.length > 0) {
+                // Activate the last visible tab
+                activateTab(visibleTabs[visibleTabs.length - 1].id);
             }
         }
 
         // Save state after closing tab
         saveState();
+        updateNoTabsMessageVisibility();
+
+        // Notify extension
+        vscode.postMessage({ command: 'tabClosed', tabId: tabId });
     }
 
     function getActiveTab() {
@@ -351,7 +363,7 @@ if (typeof agGrid === 'undefined') {
         tabsToClose.forEach(tab => closeTab(tab.id));
     }
 
-    function reuseOrCreateActiveTab(query, title) {
+    function reuseOrCreateActiveTab(query, title, sourceFileUri) {
         // If there's an active tab, reuse it by clearing its content and updating it
         if (activeTabId && tabs.find(t => t.id === activeTabId)) {
             console.log(`Reusing active tab: ${activeTabId}`);
@@ -361,6 +373,7 @@ if (typeof agGrid === 'undefined') {
             if (activeTab) {
                 activeTab.query = query;
                 activeTab.title = title;
+                activeTab.sourceFileUri = sourceFileUri;
 
                 // Update the tab element title
                 const tabElement = document.querySelector(`.tab[data-tab-id="${activeTabId}"]`);
@@ -371,6 +384,14 @@ if (typeof agGrid === 'undefined') {
                         titleSpan.title = query;
                     }
                 }
+
+                // Notify extension of update
+                vscode.postMessage({
+                    command: 'updateTabState',
+                    tabId: activeTabId,
+                    title: title,
+                    query: query
+                });
             }
 
             return activeTabId;
@@ -378,7 +399,7 @@ if (typeof agGrid === 'undefined') {
 
         // No active tab, create a new one
         console.log("No active tab found, creating new tab");
-        return createTab(query, title);
+        return createTab(query, title, null, false, sourceFileUri);
     }
 
     function getOrCreateActiveTab(tabId, query, title) {
@@ -1370,7 +1391,7 @@ if (typeof agGrid === 'undefined') {
         switch (message.type) {
             case 'createTab':
                 console.log("Received createTab message", message);
-                const tab = createTab(message.query || 'New Query', message.title, message.tabId);
+                const tab = createTab(message.query || 'New Query', message.title, message.tabId, false, message.sourceFileUri);
                 // Auto-show loading for the new tab
                 const newElements = getTabElements(tab.id);
                 if (newElements) {
@@ -1381,50 +1402,30 @@ if (typeof agGrid === 'undefined') {
 
             case 'reuseOrCreateActiveTab':
                 console.log("Received reuseOrCreateActiveTab message", message);
-                const resultTabId = reuseOrCreateActiveTab(message.query || 'New Query', message.title);
+                const resultTabId = reuseOrCreateActiveTab(message.query || 'New Query', message.title, message.sourceFileUri);
                 // Show loading state for the tab (whether reused or new)
                 const tabElements = getTabElements(resultTabId);
                 if (tabElements) {
                     if (tabElements.loadingIndicator) tabElements.loadingIndicator.style.display = 'flex';
                     if (tabElements.statusMessageElement) tabElements.statusMessageElement.textContent = 'Executing query...';
-                    if (tabElements.errorContainer) tabElements.errorContainer.style.display = 'none';
-                    // Clear previous results
-                    if (tabElements.gridElement) {
-                        const existingTab = tabs.find(t => t.id === resultTabId);
-                        if (existingTab && existingTab.gridApi) {
-                            existingTab.gridApi.setGridOption('rowData', []);
-                            existingTab.gridApi.showLoadingOverlay();
-                        }
-                    }
                 }
                 break;
-
-            case 'getOrCreateActiveTab':
-                console.log("Received getOrCreateActiveTab message", message);
-                getOrCreateActiveTab(message.tabId, message.query || 'New Query', message.title);
-                break;
-
             case 'closeActiveTab':
-                console.log("Received closeActiveTab message");
-                if (activeTabId) {
-                    closeTab(activeTabId);
-                }
+                if (activeTabId) closeTab(activeTabId);
                 break;
-
             case 'closeOtherTabs':
-                console.log("Received closeOtherTabs message");
-                if (activeTabId) {
-                    closeOtherTabs(activeTabId);
-                }
+                if (activeTabId) closeOtherTabs(activeTabId);
                 break;
-
             case 'closeAllTabs':
-                console.log("Received closeAllTabs message");
                 closeAllTabs();
                 break;
-
+            case 'filterTabs':
+                filterTabsByFile(message.fileUri);
+                break;
             case 'showLoading':
                 console.log("Received showLoading message", message);
+                // currentTab and elements are already declared at the top of the event listener
+                // but we need to re-evaluate them based on message.tabId for this specific case.
 
                 // Handle placeholder ID for reused tabs
                 if (message.tabId === 'active-tab-placeholder') {
@@ -1487,6 +1488,15 @@ if (typeof agGrid === 'undefined') {
                     // Fallback: create a new tab without specific ID
                     currentTab = createTab(message.data.query || 'New Query', message.title);
                     elements = getTabElements(currentTab.id);
+                }
+
+                if (message.title && currentTab) {
+                    currentTab.title = message.title;
+                    const tabElement = document.querySelector(`.tab[data-tab-id="${currentTab.id}"]`);
+                    if (tabElement) {
+                        const titleSpan = tabElement.querySelector('.tab-title');
+                        if (titleSpan) titleSpan.textContent = message.title;
+                    }
                 }
 
                 if (!currentTab || !elements) {
@@ -1627,12 +1637,86 @@ if (typeof agGrid === 'undefined') {
         }
     });
 
-    // Restore state when webview loads
-    try {
-        restoreState();
-    } catch (error) {
-        console.error('Failed to restore state:', error);
+    // --- Filter State ---
+    let currentFileFilter = null;
+    let lastActiveTabPerFile = {}; // Track last active tab per file
+
+    function updateNoTabsMessageVisibility() {
+        // Count visible tabs
+        const visibleTabs = tabs.filter(t => !currentFileFilter || !t.sourceFileUri || t.sourceFileUri === currentFileFilter);
+        const noTabsMessage = document.getElementById('no-tabs-message');
+
+        if (visibleTabs.length === 0) {
+            noTabsMessage.style.display = 'flex';
+            // Update message based on whether there are *any* tabs or just none for this file
+            if (tabs.length > 0) {
+                noTabsMessage.innerHTML = '<p>No results for this file</p>';
+            } else {
+                noTabsMessage.innerHTML = '<p>Execute a SQL query to create your first results tab</p>';
+            }
+        } else {
+            noTabsMessage.style.display = 'none';
+        }
     }
 
-    console.log("AG Grid results view script loaded and ready.");
-} 
+    function filterTabsByFile(fileUri) {
+        console.log('Filtering tabs for file:', fileUri);
+        currentFileFilter = fileUri;
+
+        // If fileUri is undefined/null, show all tabs
+        if (!fileUri) {
+            document.querySelectorAll('.tab').forEach(el => el.style.display = 'flex');
+            updateNoTabsMessageVisibility();
+            return;
+        }
+
+        // Show/hide tabs based on sourceFileUri
+        tabs.forEach(tab => {
+            const tabElement = document.querySelector(`.tab[data-tab-id="${tab.id}"]`);
+            if (tabElement) {
+                // Show if no sourceFileUri (global/legacy) or matches current file
+                if (!tab.sourceFileUri || tab.sourceFileUri === fileUri) {
+                    tabElement.style.display = 'flex';
+                } else {
+                    tabElement.style.display = 'none';
+                }
+            }
+        });
+
+        // If active tab is hidden OR no active tab, switch to a visible one
+        const activeTabElement = activeTabId ? document.querySelector(`.tab[data-tab-id="${activeTabId}"]`) : null;
+
+        if (!activeTabId || (activeTabElement && activeTabElement.style.display === 'none')) {
+            // Try to restore last active tab for this file
+            let tabToActivate = null;
+            if (lastActiveTabPerFile[fileUri]) {
+                const lastTab = tabs.find(t => t.id === lastActiveTabPerFile[fileUri]);
+                // Ensure it's still valid and visible (matches filter)
+                if (lastTab && (!lastTab.sourceFileUri || lastTab.sourceFileUri === fileUri)) {
+                    tabToActivate = lastTab;
+                }
+            }
+
+            if (!tabToActivate) {
+                tabToActivate = tabs.find(t => !t.sourceFileUri || t.sourceFileUri === fileUri);
+            }
+
+            if (tabToActivate) {
+                activateTab(tabToActivate.id);
+            } else {
+                // No visible tabs, deactivate current
+                activeTabId = null;
+                document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            }
+        }
+
+        updateNoTabsMessageVisibility();
+    }
+
+    // Initialize
+    // restoreState(); // We now restore from extension side
+
+    // Notify extension that webview is loaded
+    vscode.postMessage({ command: 'webviewLoaded' });
+}

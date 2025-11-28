@@ -17,7 +17,15 @@ describe('ResultsViewProvider Tests', () => {
     };
 
     // Create with extension Uri
-    resultsViewProvider = new ResultsViewProvider(vscode.Uri.file('/mock/extension/path'));
+    const mockContext = {
+      extensionUri: vscode.Uri.file('/mock/extension/path'),
+      globalStorageUri: vscode.Uri.file('/mock/storage/path'),
+      subscriptions: [],
+    } as any;
+    resultsViewProvider = new ResultsViewProvider(
+      vscode.Uri.file('/mock/extension/path'),
+      mockContext
+    );
 
     // Manually trigger the resolveWebviewView to set up the internal _view
     resultsViewProvider.resolveWebviewView(mockWebviewView);
@@ -68,6 +76,32 @@ describe('ResultsViewProvider Tests', () => {
     expect(mockWebviewPanel.webview.postMessage).toHaveBeenCalledWith({
       type: 'resultData',
       data,
+    });
+  });
+
+  test('should show results for specific tab', async () => {
+    // Mock data
+    const tabId = 'tab-123';
+    const columns = [{ name: 'col1', type: 'varchar' }];
+    const rows = [['value']];
+    const data = {
+      columns,
+      rows,
+      query: 'SELECT * FROM specific_tab',
+      wasTruncated: false,
+      totalRowsInFirstBatch: 1,
+      queryId: 'query_123',
+    };
+
+    // Show results for tab
+    resultsViewProvider.showResultsForTab(tabId, data);
+
+    // Verify webview was updated with correct structure
+    expect(mockWebviewPanel.webview.postMessage).toHaveBeenCalledWith({
+      type: 'resultData',
+      tabId,
+      data,
+      title: 'Query Results',
     });
   });
 
@@ -167,14 +201,36 @@ describe('ResultsViewProvider Tests', () => {
     const query = 'SELECT * FROM active_tab';
     const title = 'Active Tab';
 
+    // Scenario 1: No active tab exists -> Should create new tab
     const tabId = resultsViewProvider.getOrCreateActiveTabId(query, title);
 
-    expect(tabId).toBe('active-tab-placeholder');
-    expect(mockWebviewPanel.webview.postMessage).toHaveBeenCalledWith({
-      type: 'reuseOrCreateActiveTab',
-      query,
-      title,
-    });
+    expect(tabId).not.toBe('active-tab-placeholder');
+    expect(tabId).toMatch(/^tab-/);
+
+    // Should call createTabWithId internally, which sends createTab message
+    expect(mockWebviewPanel.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'createTab',
+        tabId: tabId,
+        query,
+        title,
+      })
+    );
+
+    // Scenario 2: Active tab exists -> Should reuse it
+    const reusedTabId = resultsViewProvider.getOrCreateActiveTabId(
+      'SELECT * FROM reused',
+      'Reused Tab'
+    );
+    expect(reusedTabId).toBe(tabId);
+
+    expect(mockWebviewPanel.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'reuseOrCreateActiveTab',
+        query: 'SELECT * FROM reused',
+        title: 'Reused Tab',
+      })
+    );
   });
 
   test('should close active tab', async () => {
@@ -198,6 +254,31 @@ describe('ResultsViewProvider Tests', () => {
 
     expect(mockWebviewPanel.webview.postMessage).toHaveBeenCalledWith({
       type: 'closeAllTabs',
+    });
+  });
+
+  test('should create tab with source file URI', () => {
+    const sourceUri = 'file:///path/to/script.sql';
+
+    resultsViewProvider.createTabWithId('tab-1', 'SELECT 1', 'Preview', sourceUri);
+
+    expect(mockWebviewPanel.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'createTab',
+        tabId: 'tab-1',
+        sourceFileUri: sourceUri,
+      })
+    );
+  });
+
+  test('should filter tabs when active editor changes', () => {
+    // Since we mocked window.onDidChangeActiveTextEditor, we can't easily trigger the real event.
+    // However, we can call the private method _filterTabsByFile via casting.
+    (resultsViewProvider as any)._filterTabsByFile('file:///path/to/script.sql');
+
+    expect(mockWebviewPanel.webview.postMessage).toHaveBeenCalledWith({
+      type: 'filterTabs',
+      fileUri: 'file:///path/to/script.sql',
     });
   });
 });

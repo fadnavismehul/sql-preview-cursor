@@ -11,6 +11,7 @@ describe('Command Tests', () => {
     // Create mock extension context
     extensionContext = {
       extensionUri: vscode.Uri.file('/mock/extension/path'),
+      globalStorageUri: vscode.Uri.file('/mock/storage/path'),
       secrets: {
         get: sinon.stub(),
         store: sinon.stub(),
