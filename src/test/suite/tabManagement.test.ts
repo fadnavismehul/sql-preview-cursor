@@ -70,15 +70,19 @@ describe('Tab Management Tests', () => {
       const query = 'SELECT * FROM test';
       const title = 'Test Query';
 
+      // First create a tab to set the active tab ID
+      const initialTabId = 'initial-tab';
+      resultsViewProvider.createTabWithId(initialTabId, 'SELECT 1', 'Initial');
+      postMessageStub.resetHistory(); // Reset stub
+
       const tabId = resultsViewProvider.getOrCreateActiveTabId(query, title);
 
+      assert.strictEqual(tabId, initialTabId);
       assert.ok(postMessageStub.calledOnce);
       const message = postMessageStub.firstCall.args[0];
       assert.strictEqual(message.type, 'reuseOrCreateActiveTab');
       assert.strictEqual(message.query, query);
       assert.strictEqual(message.title, title);
-      assert.ok(typeof tabId === 'string');
-      assert.ok(tabId.length > 0);
     });
 
     test('closeActiveTab should send closeActiveTab message', () => {
