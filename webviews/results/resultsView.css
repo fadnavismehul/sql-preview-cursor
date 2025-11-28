@@ -36,6 +36,30 @@ body {
     flex: 1;
     overflow-x: auto;
     overflow-y: hidden;
+    /* Custom scrollbar to prevent it from taking up too much space */
+    scrollbar-width: thin;
+    scrollbar-color: var(--vscode-scrollbarSlider-background) transparent;
+}
+
+.tab-list::-webkit-scrollbar {
+    height: 3px; /* Very thin horizontal scrollbar */
+}
+
+.tab-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.tab-list::-webkit-scrollbar-thumb {
+    background-color: var(--vscode-scrollbarSlider-background);
+    border-radius: 3px;
+}
+
+.tab-list::-webkit-scrollbar-thumb:hover {
+    background-color: var(--vscode-scrollbarSlider-hoverBackground);
+}
+
+.tab-list::-webkit-scrollbar-thumb:active {
+    background-color: var(--vscode-scrollbarSlider-activeBackground);
 }
 
 .tab {
