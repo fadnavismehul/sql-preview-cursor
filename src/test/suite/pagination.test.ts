@@ -129,6 +129,7 @@ describe('Pagination Tests', () => {
         }
         return 'SELECT * FROM test_table';
       }),
+      uri: vscode.Uri.file('/mock/file.sql'),
     };
     const mockEditor = {
       document: mockDocument,
@@ -253,6 +254,7 @@ describe('Pagination Tests', () => {
         }
         return 'SELECT * FROM test_table';
       }),
+      uri: vscode.Uri.file('/mock/file.sql'),
     };
     const mockEditor = {
       document: mockDocument,
@@ -350,6 +352,7 @@ describe('Pagination Tests', () => {
         }
         return 'SELECT * FROM test_table';
       }),
+      uri: vscode.Uri.file('/mock/file.sql'),
     };
     const mockEditor = {
       document: mockDocument,

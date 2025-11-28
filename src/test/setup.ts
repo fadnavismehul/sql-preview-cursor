@@ -61,6 +61,15 @@ jest.mock('vscode', () => ({
       clear: jest.fn(),
       dispose: jest.fn(),
     })),
+    createStatusBarItem: jest.fn(() => ({
+      text: '',
+      tooltip: '',
+      command: '',
+      show: jest.fn(),
+      hide: jest.fn(),
+      dispose: jest.fn(),
+    })),
+    onDidChangeActiveTextEditor: jest.fn(() => ({ dispose: jest.fn() })),
   },
   languages: {
     registerCodeLensProvider: jest.fn(),
@@ -69,6 +78,11 @@ jest.mock('vscode', () => ({
     getConfiguration: jest.fn(() => mockWorkspaceConfig),
     workspaceFolders: [],
     onDidChangeConfiguration: jest.fn(() => ({ dispose: jest.fn() })),
+    fs: {
+      createDirectory: jest.fn().mockResolvedValue(undefined as never),
+      writeFile: jest.fn().mockResolvedValue(undefined as never),
+      readFile: jest.fn().mockResolvedValue(Buffer.from('{}') as never),
+    },
   },
   EventEmitter: EventEmitter,
   Uri: {
@@ -77,6 +91,7 @@ jest.mock('vscode', () => ({
     joinPath: jest.fn((base, ...paths) => ({
       fsPath: `${base.fsPath}/${paths.join('/')}`,
       path: `${base.path}/${paths.join('/')}`,
+      toString: () => `${base.toString()}/${paths.join('/')}`,
     })),
   },
   ViewColumn: {

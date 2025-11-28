@@ -14,6 +14,7 @@ describe('Tab Management Tests', () => {
     // Create mock extension context
     mockContext = {
       extensionUri: vscode.Uri.file('/mock/extension/path'),
+      globalStorageUri: vscode.Uri.file('/mock/storage/path'),
       secrets: {
         get: sinon.stub(),
         store: sinon.stub(),
@@ -41,7 +42,7 @@ describe('Tab Management Tests', () => {
     } as any;
 
     // Create results view provider
-    resultsViewProvider = new ResultsViewProvider(mockContext.extensionUri);
+    resultsViewProvider = new ResultsViewProvider(mockContext.extensionUri, mockContext);
     resultsViewProvider.resolveWebviewView(mockWebviewView);
   });
 
@@ -69,15 +70,19 @@ describe('Tab Management Tests', () => {
       const query = 'SELECT * FROM test';
       const title = 'Test Query';
 
+      // First create a tab to set the active tab ID
+      const initialTabId = 'initial-tab';
+      resultsViewProvider.createTabWithId(initialTabId, 'SELECT 1', 'Initial');
+      postMessageStub.resetHistory(); // Reset stub
+
       const tabId = resultsViewProvider.getOrCreateActiveTabId(query, title);
 
+      assert.strictEqual(tabId, initialTabId);
       assert.ok(postMessageStub.calledOnce);
       const message = postMessageStub.firstCall.args[0];
       assert.strictEqual(message.type, 'reuseOrCreateActiveTab');
       assert.strictEqual(message.query, query);
       assert.strictEqual(message.title, title);
-      assert.ok(typeof tabId === 'string');
-      assert.ok(tabId.length > 0);
     });
 
     test('closeActiveTab should send closeActiveTab message', () => {
@@ -168,7 +173,7 @@ describe('Tab Management Tests', () => {
 
   describe('Webview Interaction', () => {
     test('should handle tab creation without webview gracefully', () => {
-      const providerWithoutWebview = new ResultsViewProvider(mockContext.extensionUri);
+      const providerWithoutWebview = new ResultsViewProvider(mockContext.extensionUri, mockContext);
 
       // Should not throw
       assert.doesNotThrow(() => {
@@ -180,7 +185,7 @@ describe('Tab Management Tests', () => {
     });
 
     test('getOrCreateActiveTabId should return valid tab ID even without webview', () => {
-      const providerWithoutWebview = new ResultsViewProvider(mockContext.extensionUri);
+      const providerWithoutWebview = new ResultsViewProvider(mockContext.extensionUri, mockContext);
 
       const tabId = providerWithoutWebview.getOrCreateActiveTabId('SELECT 1', 'Test');
 

@@ -1,6 +1,23 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 
+export interface TabData {
+  id: string;
+  title: string;
+  query: string;
+  columns: Array<{ name: string; type: string }>;
+  rows: unknown[][];
+  status: string;
+  wasTruncated?: boolean | undefined;
+  totalRowsInFirstBatch?: number | undefined;
+  queryId?: string | undefined;
+  infoUri?: string | undefined;
+  nextUri?: string | undefined;
+  error?: string | undefined;
+  errorDetails?: string | undefined;
+  sourceFileUri?: string | undefined;
+}
+
 /**
  * Manages the webview panel for displaying query results.
  * It handles:
@@ -13,9 +30,42 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
 
   private _view?: vscode.WebviewView;
   private _outputChannel: vscode.OutputChannel;
+  // Store tab data in memory for MCP access
+  private _tabData: Map<string, TabData> = new Map();
+  private _activeTabId: string | undefined;
+  private _resultCounter = 1;
+  private _storageUri: vscode.Uri | undefined;
+  private _activeEditorUri: string | undefined;
 
-  constructor(private readonly _extensionUri: vscode.Uri) {
+  constructor(
+    private readonly _extensionUri: vscode.Uri,
+    _context: vscode.ExtensionContext
+  ) {
     this._outputChannel = vscode.window.createOutputChannel('SQL Preview');
+    this._storageUri = _context.globalStorageUri;
+
+    // Ensure storage directory exists
+    vscode.workspace.fs.createDirectory(this._storageUri).then(
+      () => this._loadState(),
+      err => this.log(`Error creating storage directory: ${err}`)
+    );
+
+    // Listen for active editor changes
+    // Listen for active editor changes
+    vscode.window.onDidChangeActiveTextEditor(editor => {
+      if (editor && editor.document && editor.document.languageId === 'sql') {
+        this._activeEditorUri = editor.document.uri.toString();
+        this._filterTabsByFile(this._activeEditorUri);
+      }
+      // If not a SQL file (or no editor), do nothing to preserve the last SQL view
+    });
+  }
+
+  /**
+   * Logs a message to the output channel.
+   */
+  public log(message: string) {
+    this._outputChannel.appendLine(message);
   }
 
   /**
@@ -196,7 +246,37 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
         case 'exportFullResults':
           this.handleFullResultsExport(data);
           return;
-        // Add more cases to handle messages from webview JS
+        case 'webviewLoaded':
+          // Webview is ready, send persisted tabs
+          this._restoreTabsToWebview();
+          // Apply current filter
+          if (this._activeEditorUri) {
+            this._filterTabsByFile(this._activeEditorUri);
+          }
+          return;
+        case 'tabClosed':
+          // Handle tab closure
+          this.log(`Tab closed: ${data.tabId}`);
+          this._tabData.delete(data.tabId);
+          if (this._activeTabId === data.tabId) {
+            this._activeTabId = undefined;
+          }
+          this._saveState();
+          return;
+        case 'updateTabState': {
+          // Handle tab state updates (e.g. title change)
+          const tab = this._tabData.get(data.tabId);
+          if (tab) {
+            if (data.title) {
+              tab.title = data.title;
+            }
+            if (data.query) {
+              tab.query = data.query;
+            }
+            this._saveState();
+          }
+          return;
+        }
       }
     });
   }
@@ -260,43 +340,90 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
   }
 
   /** Creates a new tab with a specific ID in the webview */
-  public createTabWithId(tabId: string, query: string, title?: string) {
+  public createTabWithId(tabId: string, query: string, title?: string, sourceFileUri?: string) {
+    this.log(`createTabWithId called: ${tabId}`);
+
+    // Generate title if not provided
+    const finalTitle = title || `Result ${this._resultCounter++}`;
+
+    // Initialize data for this tab immediately (persist state)
+    this._tabData.set(tabId, {
+      id: tabId,
+      title: finalTitle,
+      query: query,
+      columns: [],
+      rows: [],
+      status: 'created',
+      sourceFileUri: sourceFileUri,
+    });
+
+    // Track active tab
+    this._activeTabId = tabId;
+    this._saveState(); // Save state after creation
+    this.log(`Tab data initialized for: ${tabId}`);
+
     if (this._view) {
       this._view.show?.(true);
-
-      // Focus the SQL Preview panel when creating a new tab
       this._focusPanel();
 
       this._view.webview.postMessage({
         type: 'createTab',
         tabId: tabId,
         query: query,
-        title: title || `Query ${Date.now()}`,
+        title: finalTitle,
+        sourceFileUri: sourceFileUri,
       });
+    } else {
+      this.log('createTabWithId: _view is undefined, attempting to focus panel to restore state');
+      this._focusPanel();
     }
   }
 
   /** Gets the active tab ID or creates a new tab if none exists */
-  public getOrCreateActiveTabId(query: string, title?: string): string {
-    if (this._view) {
-      this._view.show?.(true);
-      this._focusPanel();
+  public getOrCreateActiveTabId(query: string, title?: string, sourceFileUri?: string): string {
+    // If we have an active tab, reuse it
+    if (this._activeTabId && this._tabData.has(this._activeTabId)) {
+      const tabId = this._activeTabId;
+      this.log(`getOrCreateActiveTabId: Reusing active tab ${tabId}`);
 
-      // Send message to webview to reuse active tab or create new one
-      this._view.webview.postMessage({
-        type: 'reuseOrCreateActiveTab',
-        query: query,
-        title: title || `Query ${Date.now()}`,
-      });
-      // Return a placeholder ID - the actual tab ID will be determined by the webview
-      return 'active-tab-placeholder';
+      // Update existing tab data
+      const existing = this._tabData.get(tabId)!;
+      existing.query = query;
+      if (title) {
+        existing.title = title;
+      }
+      if (sourceFileUri) {
+        existing.sourceFileUri = sourceFileUri;
+      }
+      this._saveState();
+
+      if (this._view) {
+        this._view.show?.(true);
+        this._focusPanel();
+
+        // Send message to webview to reuse active tab
+        this._view.webview.postMessage({
+          type: 'reuseOrCreateActiveTab',
+          query: query,
+          title: title || existing.title,
+          sourceFileUri: sourceFileUri,
+        });
+      } else {
+        this._focusPanel();
+      }
+      return tabId;
     }
-    // Fallback ID if webview is not available
-    return `tab-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+    // No active tab, create new one
+    const newTabId = `tab-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    this.log(`getOrCreateActiveTabId: No active tab, creating new ${newTabId}`);
+    this.createTabWithId(newTabId, query, title, sourceFileUri);
+    return newTabId;
   }
 
   /** Closes the currently active tab */
   public closeActiveTab() {
+    this.log('closeActiveTab called');
     if (this._view) {
       this._view.webview.postMessage({
         type: 'closeActiveTab',
@@ -306,6 +433,7 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
 
   /** Closes all tabs except the active one */
   public closeOtherTabs() {
+    this.log('closeOtherTabs called');
     if (this._view) {
       this._view.webview.postMessage({
         type: 'closeOtherTabs',
@@ -315,15 +443,21 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
 
   /** Closes all tabs */
   public closeAllTabs() {
+    this.log('closeAllTabs called');
     if (this._view) {
       this._view.webview.postMessage({
         type: 'closeAllTabs',
       });
     }
+    // Clear backend state as well
+    this._tabData.clear();
+    this._activeTabId = undefined;
+    this._saveState();
   }
 
   /** Shows loading state for a specific tab */
   public showLoadingForTab(tabId: string, query?: string, title?: string) {
+    this.log(`showLoadingForTab called for: ${tabId}`);
     if (this._view) {
       // Ensure the SQL Preview panel is visible and focused
       this._view.show?.(true);
@@ -352,6 +486,34 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
       nextUri?: string;
     }
   ) {
+    this.log(`showResultsForTab called for: ${tabId}`);
+
+    // Update stored data unconditionally
+    const existingData = this._tabData.get(tabId);
+    const newData: TabData = {
+      id: tabId,
+      title: existingData?.title || 'Query Results',
+      query: data.query,
+      columns: data.columns,
+      rows: data.rows,
+      status: 'success',
+      wasTruncated: data.wasTruncated,
+      totalRowsInFirstBatch: data.totalRowsInFirstBatch,
+      queryId: data.queryId,
+      infoUri: data.infoUri,
+      nextUri: data.nextUri,
+      // Preserve existing error info if any (though success usually clears it)
+      error: undefined,
+      errorDetails: undefined,
+      sourceFileUri: existingData?.sourceFileUri, // Preserve source file URI
+    };
+    this._tabData.set(tabId, newData);
+    this.log(`Tab data updated for: ${tabId}. Rows: ${data.rows.length}`);
+
+    // Update active tab if this is the one being shown
+    this._activeTabId = tabId;
+    this._saveState(); // Save state after update
+
     if (this._view) {
       this._view.show?.(true);
       // Focus the panel when showing results
@@ -361,7 +523,11 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
         type: 'resultData',
         tabId: tabId,
         data: data,
+        title: newData.title, // Pass title to ensure webview updates it if needed
       });
+    } else {
+      this.log('showResultsForTab: _view is undefined, attempting to focus panel');
+      this._focusPanel();
     }
   }
 
@@ -373,6 +539,30 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
     query?: string,
     title?: string
   ) {
+    this.log(`showErrorForTab called for: ${tabId}. Error: ${errorMessage}`);
+    // Update stored data with error unconditionally
+    const existingData = this._tabData.get(tabId);
+    const newData: TabData = {
+      id: tabId,
+      title: title || existingData?.title || 'Error',
+      query: query || existingData?.query || '',
+      columns: existingData?.columns || [],
+      rows: existingData?.rows || [],
+      status: 'error',
+      error: errorMessage,
+      errorDetails: errorDetails,
+      // Preserve other fields
+      wasTruncated: existingData?.wasTruncated,
+      totalRowsInFirstBatch: existingData?.totalRowsInFirstBatch,
+      queryId: existingData?.queryId,
+      infoUri: existingData?.infoUri,
+      nextUri: existingData?.nextUri,
+      sourceFileUri: existingData?.sourceFileUri,
+    };
+    this._tabData.set(tabId, newData);
+    this._saveState(); // Save state after error
+    this.log(`Tab data updated with error for: ${tabId}`);
+
     if (this._view) {
       this._view.show?.(true);
       // Focus the panel when showing errors so user can see what went wrong
@@ -385,7 +575,67 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
         title: title,
         error: { message: errorMessage, details: errorDetails },
       });
+    } else {
+      this._focusPanel();
     }
+  }
+
+  // --- Public methods for MCP Server ---
+
+  /**
+   * Returns a list of all active tabs with basic metadata
+   */
+  public getTabs(): Array<{ id: string; title: string; query: string; status: string }> {
+    this.log(`getTabs called. Count: ${this._tabData.size}`);
+    const tabs: Array<{ id: string; title: string; query: string; status: string }> = [];
+    this._tabData.forEach((data, id) => {
+      tabs.push({
+        id: id,
+        title: data.title || `Tab ${id}`,
+        query: data.query || '',
+        status: data.status || 'unknown',
+      });
+    });
+    return tabs;
+  }
+
+  /**
+   * Returns the full data for a specific tab
+   */
+  public getTabData(tabId: string): TabData | undefined {
+    this.log(`getTabData called for: ${tabId}`);
+    return this._tabData.get(tabId);
+  }
+
+  /**
+   * Returns the ID of the currently active tab
+   */
+  public getActiveTabId(): string | undefined {
+    this.log(`getActiveTabId called. Current: ${this._activeTabId}`);
+    return this._activeTabId;
+  }
+
+  /**
+   * Returns the maximum result counter for a given file URI based on existing tabs.
+   */
+  public getMaxResultCountForFile(fileUri: string | undefined): number {
+    if (!fileUri) {
+      return 0;
+    }
+    let maxCount = 0;
+    this._tabData.forEach(tab => {
+      if (tab.sourceFileUri === fileUri) {
+        // Parse title "Result X"
+        const match = tab.title.match(/^Result (\d+)$/);
+        if (match && match[1]) {
+          const count = parseInt(match[1], 10);
+          if (!isNaN(count) && count > maxCount) {
+            maxCount = count;
+          }
+        }
+      }
+    });
+    return maxCount;
   }
 
   // --- Private methods ---
@@ -407,6 +657,96 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
         });
       });
     });
+  }
+
+  // --- Persistence Methods ---
+
+  private async _saveState() {
+    if (!this._storageUri) {
+      return;
+    }
+    try {
+      const stateFile = vscode.Uri.joinPath(this._storageUri, 'tabState.json');
+      const dataToSave = {
+        tabs: Array.from(this._tabData.entries()),
+        resultCounter: this._resultCounter,
+      };
+      await vscode.workspace.fs.writeFile(stateFile, Buffer.from(JSON.stringify(dataToSave)));
+    } catch (err) {
+      this.log(`Error saving state: ${err}`);
+    }
+  }
+
+  private async _loadState() {
+    if (!this._storageUri) {
+      return;
+    }
+    try {
+      const stateFile = vscode.Uri.joinPath(this._storageUri, 'tabState.json');
+      const content = await vscode.workspace.fs.readFile(stateFile);
+      const savedData = JSON.parse(content.toString());
+
+      if (savedData.tabs) {
+        this._tabData = new Map(savedData.tabs);
+      }
+      if (savedData.resultCounter) {
+        this._resultCounter = savedData.resultCounter;
+      }
+      this.log(`State loaded. Tabs: ${this._tabData.size}`);
+    } catch (err) {
+      // Ignore error if file doesn't exist (first run)
+      this.log(`No saved state found or error loading: ${err}`);
+    }
+  }
+
+  private _restoreTabsToWebview() {
+    if (!this._view) {
+      return;
+    }
+
+    this._tabData.forEach(tab => {
+      this._view!.webview.postMessage({
+        type: 'createTab',
+        tabId: tab.id,
+        query: tab.query,
+        title: tab.title,
+        sourceFileUri: tab.sourceFileUri,
+      });
+
+      if (tab.status === 'success' && tab.rows.length > 0) {
+        this._view!.webview.postMessage({
+          type: 'resultData',
+          tabId: tab.id,
+          data: {
+            columns: tab.columns,
+            rows: tab.rows,
+            query: tab.query,
+            wasTruncated: tab.wasTruncated || false,
+            totalRowsInFirstBatch: tab.totalRowsInFirstBatch || tab.rows.length,
+            queryId: tab.queryId,
+            infoUri: tab.infoUri,
+            nextUri: tab.nextUri,
+          },
+        });
+      } else if (tab.status === 'error') {
+        this._view!.webview.postMessage({
+          type: 'queryError',
+          tabId: tab.id,
+          query: tab.query,
+          title: tab.title,
+          error: { message: tab.error || 'Unknown error', details: tab.errorDetails },
+        });
+      }
+    });
+  }
+
+  private _filterTabsByFile(fileUri: string | undefined) {
+    if (this._view) {
+      this._view.webview.postMessage({
+        type: 'filterTabs',
+        fileUri: fileUri,
+      });
+    }
   }
 
   /**

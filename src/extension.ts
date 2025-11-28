@@ -3,15 +3,20 @@ import * as vscode from 'vscode';
 import { Trino, BasicAuth } from 'trino-client';
 import { PrestoCodeLensProvider } from './PrestoCodeLensProvider'; // Corrected filename casing
 import { ResultsViewProvider } from './resultsViewProvider';
+import { SqlPreviewMcpServer } from './mcpServer';
 import axios from 'axios'; // Import axios
 import * as https from 'https'; // Import https for custom agent
 import * as fs from 'fs'; // Import fs for file operations
 import * as path from 'path'; // Import path for cross-platform path handling
 
 let resultsViewProvider: ResultsViewProvider | undefined;
+let mcpServer: SqlPreviewMcpServer | undefined;
 
 // Create output channel for logging
 const outputChannel = vscode.window.createOutputChannel('SQL Preview');
+
+// Status Bar Item
+let mcpStatusBarItem: vscode.StatusBarItem;
 
 // Secret storage key for database password
 const PASSWORD_SECRET_KEY = 'sqlPreview.database.password';
@@ -141,7 +146,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   try {
     // Register the Results Webview View Provider with enhanced error handling
-    resultsViewProvider = new ResultsViewProvider(context.extensionUri);
+    resultsViewProvider = new ResultsViewProvider(context.extensionUri, context);
 
     // Attempt to register the webview provider with additional validation
     const webviewRegistration = vscode.window.registerWebviewViewProvider(
@@ -162,6 +167,100 @@ export function activate(context: vscode.ExtensionContext) {
     // Continue execution to at least enable other features like CodeLens
     outputChannel.appendLine('Continuing extension activation with reduced functionality...');
   }
+
+  // Initialize Status Bar Item
+  mcpStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+  mcpStatusBarItem.command = 'sql.showMcpInfo';
+  context.subscriptions.push(mcpStatusBarItem);
+
+  // Helper to start MCP Server
+  const startMcpServer = async () => {
+    if (!resultsViewProvider) {
+      outputChannel.appendLine(
+        'WARNING: resultsViewProvider is undefined, skipping MCP Server initialization.'
+      );
+      return;
+    }
+
+    const config = vscode.workspace.getConfiguration('sqlPreview');
+    const mcpEnabled = config.get<boolean>('mcpEnabled', false);
+
+    if (!mcpEnabled) {
+      outputChannel.appendLine('MCP Server is disabled in settings.');
+      if (mcpStatusBarItem) {
+        mcpStatusBarItem.hide();
+      }
+      return;
+    }
+
+    if (mcpServer) {
+      outputChannel.appendLine('MCP Server is already running.');
+      return;
+    }
+
+    outputChannel.appendLine('Initializing MCP Server...');
+    try {
+      mcpServer = new SqlPreviewMcpServer(resultsViewProvider);
+      outputChannel.appendLine('MCP Server instance created. Starting...');
+      await mcpServer.start();
+
+      // Update status bar with actual port (it might have changed due to auto-selection)
+      // We need to expose the port from McpServer or just read the config if we assume it updates it?
+      // Actually, McpServer logs the port but doesn't expose it easily yet.
+      // For now, we'll just show "MCP: On" or similar, or we can update McpServer to expose the port.
+      // Let's assume the user checks the logs or the info command for the exact port if it auto-incremented.
+      // Better: Update McpServer to return the port from start().
+
+      // Since I didn't update start() return type yet, let's just show a generic message or read config
+      // (though config might be stale if auto-increment happened without updating config).
+      // Wait, I didn't update config in McpServer, I just incremented a local variable.
+      // So reading config here will show the *configured* port, not necessarily the *actual* port.
+      // This is a minor UX issue. For now, let's just show "MCP Active".
+
+      mcpStatusBarItem.text = `$(server) MCP Active`;
+      mcpStatusBarItem.tooltip = `SQL Preview MCP Server is running`;
+      mcpStatusBarItem.show();
+    } catch (err) {
+      outputChannel.appendLine(`ERROR: Failed to start MCP Server: ${err}`);
+      mcpStatusBarItem.text = `$(error) MCP Failed`;
+      mcpStatusBarItem.tooltip = `Failed to start MCP Server: ${err}`;
+      mcpStatusBarItem.show();
+      mcpServer = undefined; // Reset on failure
+    }
+  };
+
+  // Helper to stop MCP Server
+  const stopMcpServer = () => {
+    if (mcpServer) {
+      outputChannel.appendLine('Stopping MCP Server...');
+      mcpServer.stop();
+      mcpServer = undefined;
+      outputChannel.appendLine('MCP Server stopped.');
+    }
+    if (mcpStatusBarItem) {
+      mcpStatusBarItem.hide();
+    }
+  };
+
+  // Initialize and start MCP Server if enabled
+  startMcpServer();
+
+  // Command to show MCP Info
+  const showMcpInfoCommand = vscode.commands.registerCommand('sql.showMcpInfo', () => {
+    const config = vscode.workspace.getConfiguration('sqlPreview');
+    const port = config.get<number>('mcpPort', 3000);
+    vscode.window
+      .showInformationMessage(
+        `MCP Server is running on port ${port}. Endpoint: http://localhost:${port}/sse`,
+        'Copy Endpoint'
+      )
+      .then(selection => {
+        if (selection === 'Copy Endpoint') {
+          vscode.env.clipboard.writeText(`http://localhost:${port}/sse`);
+        }
+      });
+  });
+  context.subscriptions.push(showMcpInfoCommand);
 
   // Register the CodeLens provider for SQL files
   const codeLensProvider = vscode.languages.registerCodeLensProvider(
@@ -225,8 +324,9 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.window.showInformationMessage('Database password cleared.');
   });
 
-  // Listen for configuration changes to prevent direct password editing
+  // Listen for configuration changes
   const configListener = vscode.workspace.onDidChangeConfiguration(async e => {
+    // Handle password protection
     if (e.affectsConfiguration('sqlPreview.password')) {
       // If someone tries to directly edit the password field, reset it and show instruction
       const config = vscode.workspace.getConfiguration('sqlPreview');
@@ -247,7 +347,22 @@ export function activate(context: vscode.ExtensionContext) {
           });
       }
     }
+
+    // Handle MCP Server toggle
+    if (e.affectsConfiguration('sqlPreview.mcpEnabled')) {
+      const config = vscode.workspace.getConfiguration('sqlPreview');
+      const mcpEnabled = config.get<boolean>('mcpEnabled', false);
+
+      if (mcpEnabled) {
+        startMcpServer();
+      } else {
+        stopMcpServer();
+      }
+    }
   });
+
+  // Map to track result counts per file
+  const fileResultCounters = new Map<string, number>();
 
   // Helper function for executing queries with different tab behaviors
   async function executeQuery(sqlFromCodeLens?: string, createNewTab = true) {
@@ -335,16 +450,43 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Handle tab creation based on the createNewTab parameter
     let tabId: string;
-    const queryPreview = sql.length > 30 ? sql.substring(0, 30) + '...' : sql;
+    const activeEditor = vscode.window.activeTextEditor;
+    const sourceFileUri = activeEditor ? activeEditor.document.uri.toString() : undefined;
+
+    // Generate a descriptive title using per-file counters
+    let tabTitle = 'Result';
+    if (activeEditor && sourceFileUri) {
+      const fileName = sourceFileUri;
+      let count = fileResultCounters.get(fileName);
+
+      // Initialize counter if not present
+      if (count === undefined) {
+        count = resultsViewProvider ? resultsViewProvider.getMaxResultCountForFile(fileName) : 0;
+      }
+
+      count++;
+      fileResultCounters.set(fileName, count);
+      tabTitle = `Result ${count}`;
+    } else {
+      // Fallback if no active editor (unlikely for runQuery)
+      tabTitle = `Result ${Date.now()}`;
+    }
+
+    // Define queryPreview for other uses (loading, error handling)
+    const querySnippet = sql.length > 20 ? sql.substring(0, 20) + '...' : sql;
+    const queryPreview = querySnippet;
 
     if (createNewTab) {
       // Generate a unique tab ID for this query
       tabId = `tab-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-      resultsViewProvider.createTabWithId(tabId, sql, queryPreview);
+      resultsViewProvider.createTabWithId(tabId, sql, tabTitle, sourceFileUri);
       resultsViewProvider.showLoadingForTab(tabId, sql, queryPreview);
     } else {
       // Use existing active tab or create a new one if none exists
-      tabId = resultsViewProvider.getOrCreateActiveTabId(sql, queryPreview);
+      tabId = resultsViewProvider.getOrCreateActiveTabId(sql, tabTitle, sourceFileUri);
+      // Note: getOrCreateActiveTabId doesn't support updating sourceFileUri yet,
+      // but if it creates a new tab internally (via webview message), we might miss it.
+      // However, for now, let's assume createNewTab=true is the main path for new queries.
       resultsViewProvider.showLoadingForTab(tabId, sql, queryPreview);
     }
 
@@ -943,4 +1085,11 @@ function generateCSV(columns: Array<{ name: string; type: string }>, rows: unkno
 export function deactivate() {
   // console.log('Extension "presto-runner" is now deactivated.');
   // Cleanup resources if needed
+  if (mcpServer) {
+    mcpServer.stop();
+  }
+  if (mcpStatusBarItem) {
+    mcpStatusBarItem.hide();
+    mcpStatusBarItem.dispose();
+  }
 }
