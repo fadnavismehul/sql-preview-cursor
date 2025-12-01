@@ -1,6 +1,42 @@
 # Changelog
 
-## [Unreleased]
+## [Released]
+
+## [0.2.1] - 2025-12-01
+
+### Added
+
+- **MCP Server**: Added Model Context Protocol (MCP) server feature for enhanced context awareness.
+
+### Fixed
+
+- **Persistence**: Fixed issues with state persistence.
+- **Tab Management**: Fixed tab focus issues and added comprehensive tests for tab management.
+- **Sync**: Fixed MCP synchronization issues.
+
+## [0.2.0] - 2025-11-30
+
+### Added
+
+- **AG Grid Improvements**:
+  - Added copy functionality for rows, columns, and cells.
+  - Added query tooltips.
+  - Added column datatypes display in headers.
+- **Run in New Tab**: Added capability to execute queries in a new tab.
+- **JSON Viewer**: Added a JSON viewer for better data inspection.
+
+### Changed
+
+- **AG Grid Standardization**:
+  - Restored standard column menu.
+  - Enhanced context menu.
+  - Updated scrollbar styling.
+- **Refactor**: Moved column type display to tooltips and fixed selection behavior.
+
+### Fixed
+
+- **Windows Compatibility**: Addressed further Windows-specific bugs.
+- **Network**: Fixed HTTPS request handling.
 
 ## [0.1.6] - 2025-11-07
 
