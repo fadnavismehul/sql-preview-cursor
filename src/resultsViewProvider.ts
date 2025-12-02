@@ -226,6 +226,7 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
     // Dispose of the listener when the webview is disposed
     webviewView.onDidDispose(() => {
       configListener.dispose();
+      this._view = undefined; // Clear the view reference so we know to re-initialize/focus correctly
     });
 
     // Handle messages from the webview (if needed in the future)
@@ -387,29 +388,31 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
       this.log(`getOrCreateActiveTabId: Reusing active tab ${tabId}`);
 
       // Update existing tab data
-      const existing = this._tabData.get(tabId)!;
-      existing.query = query;
-      if (title) {
-        existing.title = title;
-      }
-      if (sourceFileUri) {
-        existing.sourceFileUri = sourceFileUri;
-      }
-      this._saveState();
+      const existing = this._tabData.get(tabId);
+      if (existing) {
+        existing.query = query;
+        if (title) {
+          existing.title = title;
+        }
+        if (sourceFileUri) {
+          existing.sourceFileUri = sourceFileUri;
+        }
+        this._saveState();
 
-      if (this._view) {
-        this._view.show?.(true);
-        this._focusPanel();
+        if (this._view) {
+          this._view.show?.(true);
+          this._focusPanel();
 
-        // Send message to webview to reuse active tab
-        this._view.webview.postMessage({
-          type: 'reuseOrCreateActiveTab',
-          query: query,
-          title: title || existing.title,
-          sourceFileUri: sourceFileUri,
-        });
-      } else {
-        this._focusPanel();
+          // Send message to webview to reuse active tab
+          this._view.webview.postMessage({
+            type: 'reuseOrCreateActiveTab',
+            query: query,
+            title: title || existing.title,
+            sourceFileUri: sourceFileUri,
+          });
+        } else {
+          this._focusPanel();
+        }
       }
       return tabId;
     }
@@ -458,6 +461,20 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
   /** Shows loading state for a specific tab */
   public showLoadingForTab(tabId: string, query?: string, title?: string) {
     this.log(`showLoadingForTab called for: ${tabId}`);
+
+    // Update stored data to reflect loading state
+    const existingData = this._tabData.get(tabId);
+    if (existingData) {
+      existingData.status = 'loading';
+      if (query) {
+        existingData.query = query;
+      }
+      if (title) {
+        existingData.title = title;
+      }
+      this._saveState();
+    }
+
     if (this._view) {
       // Ensure the SQL Preview panel is visible and focused
       this._view.show?.(true);
@@ -705,7 +722,7 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
     }
 
     this._tabData.forEach(tab => {
-      this._view!.webview.postMessage({
+      this._view?.webview.postMessage({
         type: 'createTab',
         tabId: tab.id,
         query: tab.query,
@@ -714,7 +731,7 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
       });
 
       if (tab.status === 'success' && tab.rows.length > 0) {
-        this._view!.webview.postMessage({
+        this._view?.webview.postMessage({
           type: 'resultData',
           tabId: tab.id,
           data: {
@@ -729,12 +746,19 @@ export class ResultsViewProvider implements vscode.WebviewViewProvider {
           },
         });
       } else if (tab.status === 'error') {
-        this._view!.webview.postMessage({
+        this._view?.webview.postMessage({
           type: 'queryError',
           tabId: tab.id,
           query: tab.query,
           title: tab.title,
           error: { message: tab.error || 'Unknown error', details: tab.errorDetails },
+        });
+      } else if (tab.status === 'loading') {
+        this._view?.webview.postMessage({
+          type: 'showLoading',
+          tabId: tab.id,
+          query: tab.query,
+          title: tab.title,
         });
       }
     });

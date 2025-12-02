@@ -8,6 +8,7 @@ import axios from 'axios'; // Import axios
 import * as https from 'https'; // Import https for custom agent
 import * as fs from 'fs'; // Import fs for file operations
 import * as path from 'path'; // Import path for cross-platform path handling
+import { splitSqlQueries } from './utils/querySplitter';
 
 let resultsViewProvider: ResultsViewProvider | undefined;
 let mcpServer: SqlPreviewMcpServer | undefined;
@@ -401,21 +402,21 @@ export function activate(context: vscode.ExtensionContext) {
         const text = document.getText();
 
         // Split by semicolons (same logic as CodeLens provider)
-        const queries = text.split(/;\s*?(?=\S)/gm);
+        // Use robust splitter
+        const queries = splitSqlQueries(text);
 
-        let currentOffset = 0;
         let foundQuery = '';
+        let currentOffset = 0;
 
         for (const query of queries) {
           const trimmedQuery = query.trim();
           if (trimmedQuery.length === 0) {
-            currentOffset += query.length + 1;
             continue;
           }
 
           const startOffset = text.indexOf(trimmedQuery, currentOffset);
           if (startOffset === -1) {
-            currentOffset += query.length + 1;
+            currentOffset += query.length;
             continue;
           }
           const endOffset = startOffset + trimmedQuery.length;
@@ -537,6 +538,8 @@ export function activate(context: vscode.ExtensionContext) {
     const client = Trino.create(clientOptions);
 
     try {
+      // Log the query being executed for debugging
+      outputChannel.appendLine(`[SQL Preview] Executing query: ${sql}`);
       // console.log(`Executing query: ${sql.substring(0, 100)}...`);
 
       const results: unknown[][] = [];
@@ -1019,6 +1022,11 @@ async function executeFullExport(
 
             if (rawResultObject.data) {
               allRows.push(...rawResultObject.data);
+            }
+
+            // Fix: Check for columns if they weren't in the first response
+            if (!columns && rawResultObject.columns) {
+              columns = rawResultObject.columns;
             }
           } catch (error: unknown) {
             if (error instanceof Error) {
