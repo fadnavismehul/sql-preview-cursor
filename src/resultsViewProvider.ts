@@ -28,7 +28,7 @@ export interface TabData {
 export class ResultsViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'sqlResultsView';
 
-  private _view?: vscode.WebviewView;
+  private _view?: vscode.WebviewView | undefined;
   private _outputChannel: vscode.OutputChannel;
   // Store tab data in memory for MCP access
   private _tabData: Map<string, TabData> = new Map();
