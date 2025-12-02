@@ -37,7 +37,7 @@ describe('CodeLens Tests', () => {
       );
       assert.strictEqual(
         runCodeLens.command?.arguments?.[0],
-        'SELECT * FROM users;',
+        'SELECT * FROM users',
         'Should pass trimmed query as argument'
       );
 
@@ -55,7 +55,7 @@ describe('CodeLens Tests', () => {
       );
       assert.strictEqual(
         runNewTabCodeLens.command?.arguments?.[0],
-        'SELECT * FROM users;',
+        'SELECT * FROM users',
         'Should pass trimmed query as argument'
       );
     });

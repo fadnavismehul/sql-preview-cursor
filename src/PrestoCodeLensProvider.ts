@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { splitSqlQueries } from './utils/querySplitter';
 
 /**
  * Provides CodeLens actions (like "Run Query") above SQL statements.
@@ -22,22 +23,25 @@ export class PrestoCodeLensProvider implements vscode.CodeLensProvider {
     const codeLenses: vscode.CodeLens[] = [];
     const text = document.getText();
 
-    // Basic semicolon splitting - WARNING: Naive and will fail with semicolons in comments/strings
-    // A more robust parser (e.g., using a dedicated SQL parsing library or regex) is recommended for production.
-    const queries = text.split(/;\s*?(?=\S)/gm); // Split by semicolon followed by optional whitespace, but only if followed by non-whitespace (attempts to avoid splitting mid-line comments)
+    // Use robust splitter that handles comments and strings correctly
+    const queries = splitSqlQueries(text);
 
     let currentOffset = 0;
     for (const query of queries) {
       const trimmedQuery = query.trim();
       if (trimmedQuery.length === 0) {
-        currentOffset += query.length + 1; // +1 for the semicolon
         continue;
       }
 
+      // Find the start offset of this query
+      // Note: This simple indexOf approach might still be slightly fragile if the same query appears multiple times
+      // but since we update currentOffset, it should find the next occurrence.
+      // Ideally splitSqlQueries would return ranges, but this is a good improvement over regex.
       const startOffset = text.indexOf(trimmedQuery, currentOffset);
       if (startOffset === -1) {
         // Could not find query segment offset. Skipping CodeLens.
-        currentOffset += query.length + 1;
+        // This shouldn't happen if splitter works correctly, but safety first.
+        currentOffset += query.length;
         continue;
       }
       const endOffset = startOffset + trimmedQuery.length;
