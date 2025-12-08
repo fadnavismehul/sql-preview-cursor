@@ -2,7 +2,7 @@
   "name": "sql-preview",
   "displayName": "SQL Preview",
   "description": "Run SQL queries directly from VS Code with tabbed results",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "publisher": "mehul",
   "icon": "media/icon.png",
   "repository": {
@@ -145,27 +145,20 @@
         "sqlPreview.host": {
           "type": "string",
           "default": "localhost",
-          "description": "Database server host."
+          "description": "Database server host.",
+          "order": 1
         },
         "sqlPreview.port": {
           "type": "number",
           "default": 443,
-          "description": "Database server port."
+          "description": "Database server port.",
+          "order": 2
         },
         "sqlPreview.user": {
           "type": "string",
           "default": "user",
-          "description": "Username for database connection."
-        },
-        "sqlPreview.catalog": {
-          "type": "string",
-          "default": "",
-          "description": "Default database catalog."
-        },
-        "sqlPreview.schema": {
-          "type": "string",
-          "default": "",
-          "description": "Default database schema."
+          "description": "Username for database connection.",
+          "order": 3
         },
         "sqlPreview.password": {
           "type": "string",
@@ -173,42 +166,75 @@
           "description": "Click 'Set Password' to securely store your database password. This field shows whether a password is stored.",
           "markdownDescription": "**Secure Password Management**: Click the 'Set Password' button or use Command Palette → `SQL Preview: Set Database Password` to store your password securely. This field will show `[Password Set]` when configured.",
           "editPresentation": "singlelineText",
-          "scope": "application"
+          "scope": "application",
+          "order": 4
+        },
+        "sqlPreview.catalog": {
+          "type": "string",
+          "default": "",
+          "description": "Default database catalog.",
+          "order": 5
+        },
+        "sqlPreview.schema": {
+          "type": "string",
+          "default": "",
+          "description": "Default database schema.",
+          "order": 6
         },
         "sqlPreview.ssl": {
           "type": "boolean",
           "default": false,
-          "description": "Enable SSL/TLS for the connection."
+          "description": "Enable SSL/TLS for the connection.",
+          "order": 7
         },
         "sqlPreview.sslVerify": {
           "type": "boolean",
           "default": true,
-          "description": "Verify the server's SSL certificate. Set to false for self-signed certificates (less secure)."
+          "description": "Verify the server's SSL certificate. Set to false for self-signed certificates (less secure).",
+          "order": 8
         },
         "sqlPreview.maxRowsToDisplay": {
           "type": "number",
           "default": 500,
           "description": "Maximum number of rows to display in the results grid. Full results can be exported.",
-          "minimum": 1
+          "minimum": 1,
+          "order": 9
         },
         "sqlPreview.fontSize": {
           "type": "number",
           "default": 0,
           "description": "Font size for the results view in pixels. Set to 0 to inherit from VS Code editor font size.",
           "minimum": 0,
-          "maximum": 32
+          "maximum": 32,
+          "order": 10
         },
-        "sqlPreview.mcpPort": {
-          "type": "number",
-          "default": 3000,
-          "description": "Port for the MCP (Model Context Protocol) server.",
-          "minimum": 1024,
-          "maximum": 65535
+        "sqlPreview.tabNaming": {
+          "type": "string",
+          "enum": [
+            "file-sequential",
+            "query-snippet"
+          ],
+          "default": "file-sequential",
+          "description": "Naming convention for results tabs.",
+          "enumDescriptions": [
+            "Sequential naming per file (e.g., Result 1, Result 2)",
+            "Use the first few characters of the query"
+          ],
+          "order": 11
         },
         "sqlPreview.mcpEnabled": {
           "type": "boolean",
           "default": false,
-          "description": "(Beta) Enable the MCP Server to allow LLM agents to interact with SQL Preview."
+          "description": "(Beta) Enable the MCP Server to allow LLM agents to interact with SQL Preview.",
+          "order": 20
+        },
+        "sqlPreview.mcpPort": {
+          "type": "number",
+          "default": 3000,
+          "description": "(Beta) Port for the MCP (Model Context Protocol) server.",
+          "minimum": 1024,
+          "maximum": 65535,
+          "order": 21
         }
       }
     }

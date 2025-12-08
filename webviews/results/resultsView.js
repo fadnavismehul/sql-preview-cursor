@@ -672,6 +672,7 @@ if (typeof agGrid === 'undefined') {
         }
         // Ensure the grid div is empty before creating a new grid
         elements.gridElement.innerHTML = '';
+        elements.gridElement.style.display = 'block'; // Ensure grid is visible when initializing
 
         // Transform columns for AG Grid
         const agGridColumnDefs = columns.map(col => {
@@ -1396,6 +1397,7 @@ if (typeof agGrid === 'undefined') {
                 const newElements = getTabElements(tab.id);
                 if (newElements) {
                     if (newElements.loadingIndicator) newElements.loadingIndicator.style.display = 'flex';
+                    if (newElements.gridElement) newElements.gridElement.style.display = 'none'; // Hide grid while loading
                     if (newElements.statusMessageElement) newElements.statusMessageElement.textContent = 'Executing query...';
                 }
                 break;
@@ -1407,6 +1409,7 @@ if (typeof agGrid === 'undefined') {
                 const tabElements = getTabElements(resultTabId);
                 if (tabElements) {
                     if (tabElements.loadingIndicator) tabElements.loadingIndicator.style.display = 'flex';
+                    if (tabElements.gridElement) tabElements.gridElement.style.display = 'none'; // Hide grid while loading
                     if (tabElements.statusMessageElement) tabElements.statusMessageElement.textContent = 'Executing query...';
                 }
                 break;
@@ -1454,10 +1457,11 @@ if (typeof agGrid === 'undefined') {
                 if (currentTab && currentTab.gridApi) currentTab.gridApi.setGridOption('rowData', []); // Clear data
                 if (elements) {
                     if (elements.loadingIndicator) elements.loadingIndicator.style.display = 'flex';
+                    if (elements.gridElement) elements.gridElement.style.display = 'none'; // Hide grid while loading
                     if (elements.statusMessageElement) elements.statusMessageElement.textContent = 'Executing query...';
                     if (elements.rowCountInfoElement) elements.rowCountInfoElement.textContent = '';
                     if (elements.errorContainer) elements.errorContainer.style.display = 'none';
-                    if (currentTab && currentTab.gridApi) currentTab.gridApi.showLoadingOverlay();
+                    // if (currentTab && currentTab.gridApi) currentTab.gridApi.showLoadingOverlay(); // Unnecessary if hiding grid
                 }
                 break;
 

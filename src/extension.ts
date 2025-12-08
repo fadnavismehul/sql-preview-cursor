@@ -453,45 +453,52 @@ export function activate(context: vscode.ExtensionContext) {
     let tabId: string;
     const activeEditor = vscode.window.activeTextEditor;
     const sourceFileUri = activeEditor ? activeEditor.document.uri.toString() : undefined;
+    const config = vscode.workspace.getConfiguration('sqlPreview');
 
-    // Generate a descriptive title using per-file counters
+    // Generate a descriptive title based on configuration
+    const tabNaming = config.get<string>('tabNaming', 'file-sequential');
     let tabTitle = 'Result';
-    if (activeEditor && sourceFileUri) {
-      const fileName = sourceFileUri;
-      let count = fileResultCounters.get(fileName);
 
-      // Initialize counter if not present
-      if (count === undefined) {
-        count = resultsViewProvider ? resultsViewProvider.getMaxResultCountForFile(fileName) : 0;
-      }
-
-      count++;
-      fileResultCounters.set(fileName, count);
-      tabTitle = `Result ${count}`;
+    if (tabNaming === 'query-snippet') {
+      // Use query snippet logic
+      const cleanSql = sql.replace(/[\n\r\t]+/g, ' ').trim();
+      tabTitle = cleanSql.length > 20 ? cleanSql.substring(0, 20) + '...' : cleanSql;
     } else {
-      // Fallback if no active editor (unlikely for runQuery)
-      tabTitle = `Result ${Date.now()}`;
+      // Default: file-sequential
+      if (activeEditor && sourceFileUri) {
+        const fileName = sourceFileUri;
+        let count = fileResultCounters.get(fileName);
+
+        // Initialize counter if not present
+        if (count === undefined) {
+          count = resultsViewProvider ? resultsViewProvider.getMaxResultCountForFile(fileName) : 0;
+        }
+
+        count++;
+        fileResultCounters.set(fileName, count);
+        tabTitle = `Result ${count}`;
+      } else {
+        // Fallback if no active editor
+        tabTitle = `Result ${Date.now()}`;
+      }
     }
 
-    // Define queryPreview for other uses (loading, error handling)
-    const querySnippet = sql.length > 20 ? sql.substring(0, 20) + '...' : sql;
-    const queryPreview = querySnippet;
+    // const queryPreview = querySnippet; // No longer needed as title
 
     if (createNewTab) {
       // Generate a unique tab ID for this query
       tabId = `tab-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
       resultsViewProvider.createTabWithId(tabId, sql, tabTitle, sourceFileUri);
-      resultsViewProvider.showLoadingForTab(tabId, sql, queryPreview);
+      resultsViewProvider.showLoadingForTab(tabId, sql, tabTitle);
     } else {
       // Use existing active tab or create a new one if none exists
       tabId = resultsViewProvider.getOrCreateActiveTabId(sql, tabTitle, sourceFileUri);
       // Note: getOrCreateActiveTabId doesn't support updating sourceFileUri yet,
       // but if it creates a new tab internally (via webview message), we might miss it.
       // However, for now, let's assume createNewTab=true is the main path for new queries.
-      resultsViewProvider.showLoadingForTab(tabId, sql, queryPreview);
+      resultsViewProvider.showLoadingForTab(tabId, sql, tabTitle);
     }
 
-    const config = vscode.workspace.getConfiguration('sqlPreview');
     const host = config.get<string>('host', 'localhost');
     const port = config.get<number>('port', 8080);
     const user = config.get<string>('user', 'user');
@@ -611,13 +618,7 @@ export function activate(context: vscode.ExtensionContext) {
           const errorDetails =
             rawResultObject.error.stack || rawResultObject.error.errorCode || undefined;
           // console.error('Presto Query Error from response:', rawResultObject.error);
-          resultsViewProvider?.showErrorForTab(
-            tabId,
-            errorMessage,
-            errorDetails,
-            sql,
-            queryPreview
-          );
+          resultsViewProvider?.showErrorForTab(tabId, errorMessage, errorDetails, sql, tabTitle);
           return;
         }
 
@@ -626,13 +627,7 @@ export function activate(context: vscode.ExtensionContext) {
           const errorMessage = 'Query execution failed';
           const errorDetails = rawResultObject.stats.state;
           // console.error('Presto Query Failed:', rawResultObject);
-          resultsViewProvider?.showErrorForTab(
-            tabId,
-            errorMessage,
-            errorDetails,
-            sql,
-            queryPreview
-          );
+          resultsViewProvider?.showErrorForTab(tabId, errorMessage, errorDetails, sql, tabTitle);
           return;
         }
 
@@ -691,7 +686,7 @@ export function activate(context: vscode.ExtensionContext) {
                 errorMessage,
                 errorDetails,
                 sql,
-                queryPreview
+                tabTitle
               );
               return;
             }
@@ -828,7 +823,7 @@ export function activate(context: vscode.ExtensionContext) {
         errorMessage,
         error instanceof Error ? error.stack : undefined,
         sql,
-        queryPreview
+        tabTitle
       );
     }
   }
