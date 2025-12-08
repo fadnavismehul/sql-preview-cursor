@@ -1,6 +1,16 @@
 # Changelog
 
-## [Released]
+## [0.2.2] - 2025-12-08
+
+### Added
+
+- **Tab Naming Configuration**: Added `sqlPreview.tabNaming` setting to switch between `file-sequential` (Result 1, Result 2) and `query-snippet` naming.
+- **Settings Organization**: Organized settings into transparent groups: Connection, Display, and Advanced (Beta).
+
+### Fixed
+
+- **Tab Naming**: Fixed issue where tabs would revert to query snippet naming during loading.
+- **Loading UX**: Improved loading experience by hiding the empty grid and random headers while the query executes.
 
 ## [0.2.1] - 2025-12-01
 
