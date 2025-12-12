@@ -97,9 +97,9 @@ export class SqlPreviewMcpServer {
         // so we might need to update extension.ts to accept a query string argument.
         // Assuming we updated extension.ts or will update it:
         if (newTab) {
-          await vscode.commands.executeCommand('sql.runQueryNewTab', query);
+          vscode.commands.executeCommand('sql.runQueryNewTab', query);
         } else {
-          await vscode.commands.executeCommand('sql.runQuery', query);
+          vscode.commands.executeCommand('sql.runQuery', query);
         }
 
         return {
